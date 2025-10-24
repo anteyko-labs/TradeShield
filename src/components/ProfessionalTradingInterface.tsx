@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, BarChart3, Settings, Wallet, Copy, Star } from 'lucide-react';
-import { Card } from './Card';
+import { Wallet, Star } from 'lucide-react';
 import { Button } from './Button';
 import { useWeb3 } from '../providers/RealWeb3Provider';
 import { useRealData } from '../hooks/useRealData';
 import { CleanTradingViewWidget } from './CleanTradingViewWidget';
-import { MockTicker } from './MockTicker';
 import { tradingService } from '../services/tradingService';
 
 interface TradingPair {
@@ -26,15 +24,15 @@ interface OrderBookEntry {
 
 export const ProfessionalTradingInterface: React.FC = () => {
   const { address, balance } = useWeb3();
-  const { tradingPairs, loading } = useRealData();
+  const { tradingPairs } = useRealData();
   
   // State for trading
-  const [selectedPair, setSelectedPair] = useState<TradingPair | null>(null);
+  const [selectedPair] = useState<TradingPair | null>(null);
   const [orderType, setOrderType] = useState<'market' | 'limit'>('market');
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
-  const [timeframe, setTimeframe] = useState('1h');
+  // const [timeframe] = useState('1h');
   
   // Mock order book data
   const [orderBook, setOrderBook] = useState<{
@@ -164,15 +162,15 @@ export const ProfessionalTradingInterface: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-6">
-              <div>
-                <div className="text-2xl font-bold">{formatPrice(currentPair?.price || 0)}</div>
-                <div className={`text-sm ${currentPair?.change && currentPair.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {currentPair?.change && currentPair.change >= 0 ? '+' : ''}{currentPair?.change?.toFixed(2)}%
-                </div>
+            <div className="flex items-center space-x-3">
+              <div className="text-2xl font-bold">{formatPrice(currentPair?.price || 110203)}</div>
+              <div className={`text-sm font-semibold ${currentPair?.change && currentPair.change >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                {currentPair?.change && currentPair.change >= 0 ? '+' : ''}{currentPair?.change?.toFixed(2)}%
               </div>
+            </div>
               
               <div className="text-sm text-gray-400">
-                <div>24h Volume: ${formatVolume(currentPair?.volume || 0)}</div>
+                <div>24h Volume: ${formatVolume(Number(currentPair?.volume) || 25000000000)}</div>
                 <div>Market Cap: $2.17T</div>
               </div>
             </div>
@@ -182,7 +180,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
             <div className="text-sm text-gray-400">
               Balance: {balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH'}
             </div>
-            <Button variant="outline" size="sm">
+            <Button variant="secondary" size="small">
               <Wallet className="w-4 h-4 mr-2" />
               {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect'}
             </Button>
@@ -192,59 +190,13 @@ export const ProfessionalTradingInterface: React.FC = () => {
 
       {/* Main Trading Interface - Full Width Layout */}
       <div className="flex-1 flex">
-        {/* Left Sidebar - Chart Tools */}
-        <div className="w-12 bg-gray-800 border-r border-gray-700 flex flex-col items-center py-4 space-y-2">
-          <button className="p-2 hover:bg-gray-700 rounded">
-            <BarChart3 className="w-5 h-5" />
-          </button>
-          <button className="p-2 hover:bg-gray-700 rounded">
-            <TrendingUp className="w-5 h-5" />
-          </button>
-          <button className="p-2 hover:bg-gray-700 rounded">
-            <TrendingDown className="w-5 h-5" />
-          </button>
-          <button className="p-2 hover:bg-gray-700 rounded">
-            <Settings className="w-5 h-5" />
-          </button>
-        </div>
-
         {/* Main Chart Area - Left Column - Only TradingView */}
         <div className="flex-1 flex flex-col">
-          {/* Chart Controls */}
-          <div className="bg-gray-800 border-b border-gray-700 px-4 py-2 flex items-center justify-between">
-            <div className="flex space-x-2">
-              {['1m', '5m', '15m', '1h', '4h', '1d'].map(tf => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={`px-3 py-1 rounded text-sm ${
-                    timeframe === tf 
-                      ? 'bg-teal-600 text-white' 
-                      : 'text-gray-400 hover:text-white'
-                  }`}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-            
-            <div className="flex items-center space-x-4">
-              <button className="text-sm text-gray-400 hover:text-white">
-                Indicators
-              </button>
-              <button className="text-sm text-gray-400 hover:text-white">
-                <Settings className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
           {/* Chart - Full Height - Only TradingView */}
           <div className="flex-1 bg-gray-900 relative">
-            <CleanTradingViewWidget 
+            <CleanTradingViewWidget
               symbol="BINANCE:BTCUSDT"
-              interval={timeframe}
-              theme="dark"
-              height={700}
+              height={650}
             />
           </div>
         </div>
@@ -253,7 +205,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
         <div className="w-60 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
           <div className="p-3 border-b border-gray-700 flex-shrink-0">
             <div className="flex items-center justify-between">
-              <h3 className="font-semibold text-teal-400 text-sm">Order Book</h3>
+              <h3 className="font-semibold text-blue-400 text-sm">Order Book</h3>
               <select className="bg-gray-700 border border-gray-600 rounded px-2 py-1 text-xs text-white">
                 <option>0.001</option>
                 <option>0.01</option>
@@ -313,37 +265,37 @@ export const ProfessionalTradingInterface: React.FC = () => {
         <div className="w-60 bg-gray-800 border-l border-gray-700 flex flex-col h-full">
           {/* Top Section - Order Type and Inputs - Flexible Height */}
           <div className="p-3 space-y-3 flex-1 overflow-y-auto">
-            {/* Order Type Tabs */}
-            <div className="flex space-x-2">
-              <button
-                onClick={() => setOrderType('market')}
-                className={`px-2 py-1 rounded text-xs ${
-                  orderType === 'market' 
-                    ? 'bg-teal-600 text-white' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Market
-              </button>
-              <button
-                onClick={() => setOrderType('limit')}
-                className={`px-2 py-1 rounded text-xs ${
-                  orderType === 'limit' 
-                    ? 'bg-teal-600 text-white' 
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                Limit
-              </button>
-            </div>
+                  {/* Order Type Tabs */}
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={() => setOrderType('market')}
+                      className={`px-2 py-1 rounded text-xs ${
+                        orderType === 'market'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Market
+                    </button>
+                    <button
+                      onClick={() => setOrderType('limit')}
+                      className={`px-2 py-1 rounded text-xs ${
+                        orderType === 'limit'
+                          ? 'bg-blue-600 text-white'
+                          : 'text-gray-400 hover:text-white'
+                      }`}
+                    >
+                      Limit
+                    </button>
+                  </div>
 
             {/* Buy/Sell Buttons - Moved Back Up */}
             <div className="grid grid-cols-2 gap-2">
               <button
                 onClick={() => setSide('buy')}
                 className={`py-2 rounded font-semibold text-sm ${
-                  side === 'buy' 
-                    ? 'bg-teal-600 text-white' 
+                  side === 'buy'
+                    ? 'bg-blue-600 text-white'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
@@ -352,8 +304,8 @@ export const ProfessionalTradingInterface: React.FC = () => {
               <button
                 onClick={() => setSide('sell')}
                 className={`py-2 rounded font-semibold text-sm ${
-                  side === 'sell' 
-                    ? 'bg-red-600 text-white' 
+                  side === 'sell'
+                    ? 'bg-red-600 text-white'
                     : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
                 }`}
               >
@@ -430,13 +382,13 @@ export const ProfessionalTradingInterface: React.FC = () => {
           </div>
 
           {/* Bottom Section - Execute Button Fixed at Bottom */}
-          <div className="p-3 border-t border-gray-700 flex-shrink-0">
+          <div className="p-3 border-t border-gray-700 flex-shrink-0" style={{ paddingBottom: 'calc(0.75rem + 5px)' }}>
             {/* Execute Trade Button - Main Button at Bottom */}
             <button
               onClick={executeTrade}
               className={`w-full py-3 rounded font-semibold text-sm mb-2 ${
-                side === 'buy' 
-                  ? 'bg-teal-600 hover:bg-teal-700' 
+                side === 'buy'
+                  ? 'bg-blue-600 hover:bg-blue-700'
                   : 'bg-red-600 hover:bg-red-700'
               }`}
             >
@@ -445,7 +397,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
 
             {/* Connect Wallet Button */}
             {!address && (
-              <button className="w-full py-2 bg-teal-600 hover:bg-teal-700 rounded font-semibold text-sm">
+              <button className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold text-sm">
                 Connect
               </button>
             )}

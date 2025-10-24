@@ -42,7 +42,7 @@ class TradingService {
     const currentPrice = basePrice + (Math.random() - 0.5) * 2;
     
     // Generate sell orders (asks) - prices above current
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 9; i++) {
       const price = currentPrice + (i * 0.5) + (Math.random() - 0.5) * 0.1;
       const size = Math.random() * 3 + 0.1;
       const total = asks.length > 0 ? asks[asks.length - 1].total + size : size;
@@ -51,7 +51,7 @@ class TradingService {
     }
     
     // Generate buy orders (bids) - prices below current
-    for (let i = 1; i <= 10; i++) {
+    for (let i = 1; i <= 9; i++) {
       const price = currentPrice - (i * 0.5) + (Math.random() - 0.5) * 0.1;
       const size = Math.random() * 3 + 0.1;
       const total = bids.length > 0 ? bids[bids.length - 1].total + size : size;

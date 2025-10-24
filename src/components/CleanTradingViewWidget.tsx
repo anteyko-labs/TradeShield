@@ -54,12 +54,17 @@ export const CleanTradingViewWidget: React.FC<CleanTradingViewWidgetProps> = ({
           locale: 'en',
           toolbar_bg: '#1e1e1e',
           enable_publishing: false,
-          hide_side_toolbar: true,
+          hide_side_toolbar: false, // Показываем боковую панель с инструментами
           allow_symbol_change: false,
           details: false,
           hotlist: false,
           calendar: false,
-          // Only use Volume study - no RSI or MACD
+          // Показываем встроенные инструменты рисования
+          drawing_tools: {
+            enabled: true,
+            show_toolbar: true
+          },
+          // Только Volume study
           studies: [
             'Volume@tv-basicstudies'
           ],
