@@ -1,4 +1,8 @@
 // Real data service for crypto prices
+import { getCoinsByIds, CoinGeckoData } from './coingeckoService';
+import { getLatestQuotes, CMCData } from './coinmarketcapService';
+import { getStaticCryptoPrices, StaticPriceData } from './staticDataService';
+
 export interface RealPriceData {
   symbol: string;
   price: number;
@@ -11,150 +15,90 @@ export interface RealPriceData {
   lastUpdated: string;
 }
 
-// Real Bitcoin price (as of October 2024)
-const REAL_BITCOIN_PRICE = 67000; // Current BTC price
-const REAL_ETH_PRICE = 3200; // Current ETH price
-
-// Get real crypto prices from CoinGecko API
+// Get real crypto prices from multiple APIs
 export const getRealCryptoPrices = async (): Promise<RealPriceData[]> => {
   try {
-    // Try to get real data from CoinGecko
-    const response = await fetch(
-      'https://api.coingecko.com/api/v3/simple/price?ids=bitcoin,ethereum,cardano,solana,polkadot,avalanche-2,polygon,chainlink&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true'
-    );
+    // Try CoinGecko first (free, no API key needed)
+    const coinGeckoData = await getCoinsByIds([
+      'bitcoin',
+      'ethereum', 
+      'cardano',
+      'solana',
+      'polkadot',
+      'avalanche-2',
+      'polygon',
+      'chainlink'
+    ]);
     
-    if (!response.ok) {
-      throw new Error('CoinGecko API error');
+    if (coinGeckoData && coinGeckoData.length > 0) {
+      return coinGeckoData.map(coin => ({
+        symbol: coin.symbol.toUpperCase(),
+        price: coin.current_price,
+        change24h: coin.price_change_24h,
+        changePercent24h: coin.price_change_percentage_24h,
+        volume24h: coin.total_volume,
+        marketCap: coin.market_cap,
+        high24h: coin.high_24h,
+        low24h: coin.low_24h,
+        lastUpdated: coin.last_updated
+      }));
     }
     
-    const data = await response.json();
+    // Fallback to CoinMarketCap if available
+    const cmcData = await getLatestQuotes(['BTC', 'ETH', 'ADA', 'SOL', 'DOT', 'AVAX', 'MATIC', 'LINK']);
     
-    return [
-      {
-        symbol: 'BTC',
-        price: data.bitcoin?.usd || REAL_BITCOIN_PRICE,
-        change24h: data.bitcoin?.usd_24h_change || 0,
-        changePercent24h: data.bitcoin?.usd_24h_change || 0,
-        volume24h: data.bitcoin?.usd_24h_vol || 0,
-        marketCap: data.bitcoin?.usd_market_cap || 0,
-        high24h: (data.bitcoin?.usd || REAL_BITCOIN_PRICE) * 1.05,
-        low24h: (data.bitcoin?.usd || REAL_BITCOIN_PRICE) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'ETH',
-        price: data.ethereum?.usd || REAL_ETH_PRICE,
-        change24h: data.ethereum?.usd_24h_change || 0,
-        changePercent24h: data.ethereum?.usd_24h_change || 0,
-        volume24h: data.ethereum?.usd_24h_vol || 0,
-        marketCap: data.ethereum?.usd_market_cap || 0,
-        high24h: (data.ethereum?.usd || REAL_ETH_PRICE) * 1.05,
-        low24h: (data.ethereum?.usd || REAL_ETH_PRICE) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'ADA',
-        price: data.cardano?.usd || 0.45,
-        change24h: data.cardano?.usd_24h_change || 0,
-        changePercent24h: data.cardano?.usd_24h_change || 0,
-        volume24h: data.cardano?.usd_24h_vol || 0,
-        marketCap: data.cardano?.usd_market_cap || 0,
-        high24h: (data.cardano?.usd || 0.45) * 1.05,
-        low24h: (data.cardano?.usd || 0.45) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'SOL',
-        price: data.solana?.usd || 95,
-        change24h: data.solana?.usd_24h_change || 0,
-        changePercent24h: data.solana?.usd_24h_change || 0,
-        volume24h: data.solana?.usd_24h_vol || 0,
-        marketCap: data.solana?.usd_market_cap || 0,
-        high24h: (data.solana?.usd || 95) * 1.05,
-        low24h: (data.solana?.usd || 95) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'DOT',
-        price: data.polkadot?.usd || 6.5,
-        change24h: data.polkadot?.usd_24h_change || 0,
-        changePercent24h: data.polkadot?.usd_24h_change || 0,
-        volume24h: data.polkadot?.usd_24h_vol || 0,
-        marketCap: data.polkadot?.usd_market_cap || 0,
-        high24h: (data.polkadot?.usd || 6.5) * 1.05,
-        low24h: (data.polkadot?.usd || 6.5) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'AVAX',
-        price: data['avalanche-2']?.usd || 35,
-        change24h: data['avalanche-2']?.usd_24h_change || 0,
-        changePercent24h: data['avalanche-2']?.usd_24h_change || 0,
-        volume24h: data['avalanche-2']?.usd_24h_vol || 0,
-        marketCap: data['avalanche-2']?.usd_market_cap || 0,
-        high24h: (data['avalanche-2']?.usd || 35) * 1.05,
-        low24h: (data['avalanche-2']?.usd || 35) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'MATIC',
-        price: data.polygon?.usd || 0.85,
-        change24h: data.polygon?.usd_24h_change || 0,
-        changePercent24h: data.polygon?.usd_24h_change || 0,
-        volume24h: data.polygon?.usd_24h_vol || 0,
-        marketCap: data.polygon?.usd_market_cap || 0,
-        high24h: (data.polygon?.usd || 0.85) * 1.05,
-        low24h: (data.polygon?.usd || 0.85) * 0.95,
-        lastUpdated: new Date().toISOString()
-      },
-      {
-        symbol: 'LINK',
-        price: data.chainlink?.usd || 14,
-        change24h: data.chainlink?.usd_24h_change || 0,
-        changePercent24h: data.chainlink?.usd_24h_change || 0,
-        volume24h: data.chainlink?.usd_24h_vol || 0,
-        marketCap: data.chainlink?.usd_market_cap || 0,
-        high24h: (data.chainlink?.usd || 14) * 1.05,
-        low24h: (data.chainlink?.usd || 14) * 0.95,
-        lastUpdated: new Date().toISOString()
-      }
-    ];
+    if (cmcData && cmcData.length > 0) {
+      return cmcData.map(coin => ({
+        symbol: coin.symbol,
+        price: coin.quote.USD.price,
+        change24h: coin.quote.USD.percent_change_24h,
+        changePercent24h: coin.quote.USD.percent_change_24h,
+        volume24h: coin.quote.USD.volume_24h,
+        marketCap: coin.quote.USD.market_cap,
+        high24h: coin.quote.USD.price * 1.05,
+        low24h: coin.quote.USD.price * 0.95,
+        lastUpdated: coin.quote.USD.last_updated
+      }));
+    }
+    
+    throw new Error('No API data available');
   } catch (error) {
     console.error('Error fetching real crypto prices:', error);
-    // Return fallback data with real prices
-    return getFallbackRealData();
+    console.log('Using static fallback data');
+    // Return static data as ultimate fallback
+    return getStaticCryptoPrices();
   }
 };
 
-// Fallback data with real prices
+// Fallback data with real prices (last resort)
 const getFallbackRealData = (): RealPriceData[] => {
   return [
     {
       symbol: 'BTC',
-      price: REAL_BITCOIN_PRICE,
-      change24h: 2.5,
+      price: 110203,
+      change24h: 1500,
       changePercent24h: 2.5,
       volume24h: 25000000000,
       marketCap: 1300000000000,
-      high24h: REAL_BITCOIN_PRICE * 1.05,
-      low24h: REAL_BITCOIN_PRICE * 0.95,
+      high24h: 68000,
+      low24h: 65000,
       lastUpdated: new Date().toISOString()
     },
     {
       symbol: 'ETH',
-      price: REAL_ETH_PRICE,
-      change24h: -1.2,
+      price: 3200,
+      change24h: -40,
       changePercent24h: -1.2,
       volume24h: 15000000000,
       marketCap: 380000000000,
-      high24h: REAL_ETH_PRICE * 1.05,
-      low24h: REAL_ETH_PRICE * 0.95,
+      high24h: 3250,
+      low24h: 3150,
       lastUpdated: new Date().toISOString()
     },
     {
       symbol: 'ADA',
       price: 0.45,
-      change24h: 3.8,
+      change24h: 0.02,
       changePercent24h: 3.8,
       volume24h: 800000000,
       marketCap: 16000000000,
@@ -165,7 +109,7 @@ const getFallbackRealData = (): RealPriceData[] => {
     {
       symbol: 'SOL',
       price: 95,
-      change24h: 5.2,
+      change24h: 4.5,
       changePercent24h: 5.2,
       volume24h: 2000000000,
       marketCap: 42000000000,
@@ -176,7 +120,7 @@ const getFallbackRealData = (): RealPriceData[] => {
     {
       symbol: 'DOT',
       price: 6.5,
-      change24h: -2.1,
+      change24h: -0.15,
       changePercent24h: -2.1,
       volume24h: 300000000,
       marketCap: 8000000000,
@@ -187,7 +131,7 @@ const getFallbackRealData = (): RealPriceData[] => {
     {
       symbol: 'AVAX',
       price: 35,
-      change24h: 4.5,
+      change24h: 1.5,
       changePercent24h: 4.5,
       volume24h: 500000000,
       marketCap: 13000000000,
@@ -198,7 +142,7 @@ const getFallbackRealData = (): RealPriceData[] => {
     {
       symbol: 'MATIC',
       price: 0.85,
-      change24h: 1.8,
+      change24h: 0.015,
       changePercent24h: 1.8,
       volume24h: 200000000,
       marketCap: 8000000000,
@@ -209,7 +153,7 @@ const getFallbackRealData = (): RealPriceData[] => {
     {
       symbol: 'LINK',
       price: 14,
-      change24h: -0.5,
+      change24h: -0.07,
       changePercent24h: -0.5,
       volume24h: 400000000,
       marketCap: 8000000000,

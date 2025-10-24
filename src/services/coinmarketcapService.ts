@@ -57,8 +57,8 @@ const getHeaders = () => ({
 // Get latest quotes for specific cryptocurrencies
 export const getLatestQuotes = async (symbols: string[]): Promise<CMCData[]> => {
   if (!CMC_API_KEY) {
-    console.warn('CoinMarketCap API key not found, using mock data');
-    return getMockData();
+    console.warn('CoinMarketCap API key not found, using CoinGecko fallback');
+    return await getCoinGeckoFallback(symbols);
   }
 
   try {
@@ -84,72 +84,87 @@ export const getLatestQuotes = async (symbols: string[]): Promise<CMCData[]> => 
     return data.data;
   } catch (error) {
     console.error('Error fetching from CoinMarketCap:', error);
-    return getMockData();
+    return await getCoinGeckoFallback(symbols);
   }
 };
 
-// Get historical data for charts
-export const getHistoricalData = async (
-  symbol: string,
-  timeStart: string,
-  timeEnd: string
-): Promise<any[]> => {
-  if (!CMC_API_KEY) {
-    console.warn('CoinMarketCap API key not found, using mock data');
-    return getMockHistoricalData(symbol);
-  }
-
+// CoinGecko fallback (free, no API key needed)
+const getCoinGeckoFallback = async (symbols: string[]): Promise<CMCData[]> => {
   try {
+    // Map symbols to CoinGecko IDs
+    const symbolToId: { [key: string]: string } = {
+      'BTC': 'bitcoin',
+      'ETH': 'ethereum',
+      'ADA': 'cardano',
+      'SOL': 'solana',
+      'DOT': 'polkadot',
+      'AVAX': 'avalanche-2',
+      'MATIC': 'polygon',
+      'LINK': 'chainlink'
+    };
+
+    const ids = symbols.map(symbol => symbolToId[symbol]).filter(Boolean);
+    const idsString = ids.join(',');
+    
     const response = await fetch(
-      `${CMC_API_BASE}/cryptocurrency/quotes/historical?symbol=${symbol}&time_start=${timeStart}&time_end=${timeEnd}`,
-      {
-        method: 'GET',
-        headers: getHeaders(),
-      }
+      `https://api.coingecko.com/api/v3/simple/price?ids=${idsString}&vs_currencies=usd&include_24hr_change=true&include_24hr_vol=true&include_market_cap=true`
     );
 
     if (!response.ok) {
-      throw new Error(`CMC API error: ${response.status} ${response.statusText}`);
+      throw new Error(`CoinGecko API error: ${response.status}`);
     }
 
     const data = await response.json();
-    return data.data || [];
+    
+    return symbols.map((symbol, index) => {
+      const id = symbolToId[symbol];
+      const coinData = data[id];
+      
+      return {
+        id: index + 1,
+        name: symbol === 'BTC' ? 'Bitcoin' : 
+              symbol === 'ETH' ? 'Ethereum' :
+              symbol === 'ADA' ? 'Cardano' :
+              symbol === 'SOL' ? 'Solana' :
+              symbol === 'DOT' ? 'Polkadot' :
+              symbol === 'AVAX' ? 'Avalanche' :
+              symbol === 'MATIC' ? 'Polygon' :
+              symbol === 'LINK' ? 'Chainlink' : symbol,
+        symbol: symbol,
+        slug: symbol.toLowerCase(),
+        cmc_rank: index + 1,
+        num_market_pairs: 1000,
+        circulating_supply: 1000000,
+        total_supply: 1000000,
+        max_supply: null,
+        last_updated: new Date().toISOString(),
+        date_added: new Date().toISOString(),
+        tags: ['crypto'],
+        platform: null,
+        quote: {
+          USD: {
+            price: coinData?.usd || 0,
+            volume_24h: coinData?.usd_24h_vol || 0,
+            volume_change_24h: 0,
+            percent_change_1h: 0,
+            percent_change_24h: coinData?.usd_24h_change || 0,
+            percent_change_7d: 0,
+            market_cap: coinData?.usd_market_cap || 0,
+            market_cap_dominance: 0,
+            fully_diluted_market_cap: 0,
+            last_updated: new Date().toISOString(),
+          }
+        }
+      };
+    });
   } catch (error) {
-    console.error('Error fetching historical data from CMC:', error);
-    return getMockHistoricalData(symbol);
+    console.error('Error fetching from CoinGecko:', error);
+    return getStaticFallbackData();
   }
 };
 
-// Get trending cryptocurrencies
-export const getTrending = async (): Promise<CMCData[]> => {
-  if (!CMC_API_KEY) {
-    console.warn('CoinMarketCap API key not found, using mock data');
-    return getMockData();
-  }
-
-  try {
-    const response = await fetch(
-      `${CMC_API_BASE}/cryptocurrency/trending/latest`,
-      {
-        method: 'GET',
-        headers: getHeaders(),
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`CMC API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data: CMCResponse = await response.json();
-    return data.data || [];
-  } catch (error) {
-    console.error('Error fetching trending from CMC:', error);
-    return getMockData();
-  }
-};
-
-// Mock data fallback when API key is not available
-const getMockData = (): CMCData[] => {
+// Static fallback data (last resort)
+const getStaticFallbackData = (): CMCData[] => {
   return [
     {
       id: 1,
@@ -167,15 +182,15 @@ const getMockData = (): CMCData[] => {
       platform: null,
       quote: {
         USD: {
-          price: 43250.50 + (Math.random() - 0.5) * 1000,
-          volume_24h: 1200000000,
+          price: 110203,
+          volume_24h: 25000000000,
           volume_change_24h: 5.2,
           percent_change_1h: 0.5,
-          percent_change_24h: 2.45,
+          percent_change_24h: 2.5,
           percent_change_7d: -1.2,
-          market_cap: 850000000000,
+          market_cap: 1300000000000,
           market_cap_dominance: 42.5,
-          fully_diluted_market_cap: 900000000000,
+          fully_diluted_market_cap: 1400000000000,
           last_updated: new Date().toISOString(),
         },
       },
@@ -196,98 +211,18 @@ const getMockData = (): CMCData[] => {
       platform: null,
       quote: {
         USD: {
-          price: 2845.80 + (Math.random() - 0.5) * 100,
-          volume_24h: 856000000,
+          price: 3200,
+          volume_24h: 15000000000,
           volume_change_24h: -2.1,
           percent_change_1h: -0.3,
-          percent_change_24h: -1.23,
+          percent_change_24h: -1.2,
           percent_change_7d: 3.8,
-          market_cap: 342000000000,
+          market_cap: 380000000000,
           market_cap_dominance: 18.2,
-          fully_diluted_market_cap: 342000000000,
+          fully_diluted_market_cap: 380000000000,
           last_updated: new Date().toISOString(),
         },
       },
-    },
-    {
-      id: 9999,
-      name: 'TradeShield Dollar',
-      symbol: 'TSD',
-      slug: 'tradeshield-dollar',
-      cmc_rank: 999,
-      num_market_pairs: 5,
-      circulating_supply: 100000000,
-      total_supply: 100000000,
-      max_supply: 100000000,
-      last_updated: new Date().toISOString(),
-      date_added: new Date().toISOString(),
-      tags: ['defi', 'exchange-token'],
-      platform: null,
-      quote: {
-        USD: {
-          price: 1.05 + (Math.random() - 0.5) * 0.1,
-          volume_24h: 45000000,
-          volume_change_24h: 12.5,
-          percent_change_1h: 0.8,
-          percent_change_24h: 5.67,
-          percent_change_7d: 15.2,
-          market_cap: 105000000,
-          market_cap_dominance: 0.01,
-          fully_diluted_market_cap: 105000000,
-          last_updated: new Date().toISOString(),
-        },
-      },
-    },
-    {
-      id: 9998,
-      name: 'TradeShield Points',
-      symbol: 'TSP',
-      slug: 'tradeshield-points',
-      cmc_rank: 1000,
-      num_market_pairs: 3,
-      circulating_supply: 100000000,
-      total_supply: 100000000,
-      max_supply: 100000000,
-      last_updated: new Date().toISOString(),
-      date_added: new Date().toISOString(),
-      tags: ['defi', 'reward-token'],
-      platform: null,
-      quote: {
-        USD: {
-          price: 0.85 + (Math.random() - 0.5) * 0.05,
-          volume_24h: 23000000,
-          volume_change_24h: 8.3,
-          percent_change_1h: 0.2,
-          percent_change_24h: 3.21,
-          percent_change_7d: 8.7,
-          market_cap: 85000000,
-          market_cap_dominance: 0.005,
-          fully_diluted_market_cap: 85000000,
-          last_updated: new Date().toISOString(),
-        },
-      },
-    },
+    }
   ];
-};
-
-const getMockHistoricalData = (symbol: string) => {
-  const now = Date.now();
-  const data = [];
-  let basePrice = symbol === 'BTC' ? 43000 : symbol === 'ETH' ? 2800 : 1.0;
-  
-  for (let i = 24; i >= 0; i--) {
-    const timestamp = now - (i * 3600000); // 1 hour intervals
-    const variation = (Math.random() - 0.5) * 0.05; // ±2.5% variation
-    const price = basePrice * (1 + variation);
-    
-    data.push({
-      timestamp: new Date(timestamp).toISOString(),
-      price: parseFloat(price.toFixed(2)),
-      volume: Math.floor(Math.random() * 1000000),
-    });
-    
-    basePrice = price;
-  }
-  
-  return data;
 };

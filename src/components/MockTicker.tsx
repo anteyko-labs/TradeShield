@@ -35,9 +35,9 @@ export const MockTicker: React.FC<MockTickerProps> = ({
       }));
     } catch (error) {
       console.error('Error fetching real data:', error);
-      // Fallback to real prices without API
+      // Fallback to real prices without API (updated with real Bitcoin price)
       return symbols.map(symbol => {
-        const basePrice = symbol === 'BTCUSD' ? 67000 : 
+        const basePrice = symbol === 'BTCUSD' ? 110203 : 
                         symbol === 'ETHUSD' ? 3200 :
                         symbol === 'ADAUSD' ? 0.45 :
                         symbol === 'SOLUSD' ? 95 :

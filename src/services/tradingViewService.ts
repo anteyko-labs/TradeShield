@@ -274,7 +274,7 @@ const getMockQuotes = (): TradingViewQuote[] => {
       short_name: 'BTC',
       exchange: 'BINANCE',
       description: 'Bitcoin',
-      lp: 43250.50 + (Math.random() - 0.5) * 1000,
+      lp: 110203 + (Math.random() - 0.5) * 2000,
       ask: 43255.00,
       bid: 43245.00,
       open_price: 42500.00,

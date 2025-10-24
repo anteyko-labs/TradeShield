@@ -7,6 +7,7 @@ import { useRealData } from '../hooks/useRealData';
 import { TradingViewWidget } from './TradingViewWidget';
 import { AdvancedTradingViewWidget } from './AdvancedTradingViewWidget';
 import { SimpleTradingViewWidget } from './SimpleTradingViewWidget';
+import { CleanTradingViewWidget } from './CleanTradingViewWidget';
 import { TradingViewTicker } from './TradingViewTicker';
 
 interface TradingPair {
@@ -26,9 +27,9 @@ export const TradingInterface: React.FC = () => {
   // Use real data from our service
   const { tradingPairs: pairs, loading, error } = useRealData();
 
-  // Real data fallback with current prices
+  // Real data fallback with current prices (updated with real Bitcoin price)
   const mockPairs: TradingPair[] = [
-    { id: 'BTC/USDT', name: 'BTC/USDT', price: 67000, change: 2.5, volume: '25B' },
+    { id: 'BTC/USDT', name: 'BTC/USDT', price: 110203, change: 0.52, volume: '25B' },
     { id: 'ETH/USDT', name: 'ETH/USDT', price: 3200, change: -1.2, volume: '15B' },
     { id: 'ADA/USDT', name: 'ADA/USDT', price: 0.45, change: 3.8, volume: '800M' },
     { id: 'SOL/USDT', name: 'SOL/USDT', price: 95, change: 5.2, volume: '2B' },
@@ -112,7 +113,7 @@ export const TradingInterface: React.FC = () => {
                 <Button variant="secondary" size="small">1d</Button>
               </div>
             </div>
-            <SimpleTradingViewWidget 
+            <CleanTradingViewWidget 
               symbol={selectedPairData?.base || 'BTCUSD'} 
               height={600}
             />

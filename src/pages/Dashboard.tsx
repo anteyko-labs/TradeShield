@@ -10,6 +10,7 @@ import { SimpleTicker } from '../components/SimpleTicker';
 import { MockTicker } from '../components/MockTicker';
 import { TradingViewMarketOverview } from '../components/TradingViewMarketOverview';
 import { TradingTools } from '../components/TradingTools';
+import { Card } from '../components/Card';
 import { useWeb3 } from '../providers/RealWeb3Provider';
 
 type TabType = 'trading' | 'mev' | 'tokens' | 'analytics' | 'tools';
