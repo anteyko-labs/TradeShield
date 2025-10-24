@@ -1,8 +1,9 @@
 // CoinGecko API integration for real-time crypto data with proxy
 import { cacheService } from './cacheService';
+import { rateLimiter } from './rateLimiter';
 
 const COINGECKO_API_URL = '/api/coingecko';
-const CACHE_TTL = 30000; // 30 seconds cache
+const CACHE_TTL = 300000; // 5 minutes cache
 export interface CoinGeckoData {
   id: string;
   symbol: string;
@@ -54,7 +55,7 @@ export const getRealTimePrices = async (): Promise<CoinGeckoData[]> => {
   }
 };
 
-// Get specific coins by IDs with caching
+// Get specific coins by IDs with improved caching
 export const getCoinsByIds = async (ids: string[]): Promise<CoinGeckoData[]> => {
   const cacheKey = `coingecko_${ids.join(',')}`;
   
@@ -65,6 +66,12 @@ export const getCoinsByIds = async (ids: string[]): Promise<CoinGeckoData[]> => 
     return cachedData;
   }
 
+  // Check rate limiter
+  if (!rateLimiter.canMakeRequest('coingecko')) {
+    console.log('Rate limited by rate limiter, using fallback data');
+    return getStaticFallbackData();
+  }
+
   try {
     const idsString = ids.join(',');
     const response = await fetch(
@@ -72,13 +79,17 @@ export const getCoinsByIds = async (ids: string[]): Promise<CoinGeckoData[]> => 
     );
 
     if (!response.ok) {
+      if (response.status === 429) {
+        console.log('Rate limited by CoinGecko API, using fallback data');
+        return getStaticFallbackData();
+      }
       throw new Error(`CoinGecko API error: ${response.status} ${response.statusText}`);
     }
 
     const data: CoinGeckoData[] = await response.json();
     
-    // Cache the data
-    cacheService.set(cacheKey, data, CACHE_TTL);
+    // Cache the data for 5 minutes
+    cacheService.set(cacheKey, data, 300000);
     return data;
   } catch (error) {
     console.error('Error fetching specific coins from CoinGecko:', error);

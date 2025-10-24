@@ -3,6 +3,7 @@ import { Shield, TrendingUp, Wallet, BarChart3, Settings, LogOut } from 'lucide-
 import { Button } from '../components/Button';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { TradingInterface } from '../components/TradingInterface';
+import { ProfessionalTradingInterface } from '../components/ProfessionalTradingInterface';
 import { MEVProtection } from '../components/MEVProtection';
 import { TokenManagement } from '../components/TokenManagement';
 import { TradingViewTicker } from '../components/TradingViewTicker';
@@ -130,7 +131,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
 
       <div className="p-6">
         <div className="animate-fade-in">
-          {activeTab === 'trading' && <TradingInterface />}
+          {activeTab === 'trading' && <ProfessionalTradingInterface />}
           {activeTab === 'mev' && <MEVProtection />}
           {activeTab === 'tokens' && <TokenManagement />}
           {activeTab === 'tools' && <TradingTools />}

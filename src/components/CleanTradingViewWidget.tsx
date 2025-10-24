@@ -54,16 +54,14 @@ export const CleanTradingViewWidget: React.FC<CleanTradingViewWidgetProps> = ({
           locale: 'en',
           toolbar_bg: '#1e1e1e',
           enable_publishing: false,
-          hide_side_toolbar: false,
-          allow_symbol_change: true,
-          details: true,
-          hotlist: true,
-          calendar: true,
-          // Only use basic studies that work reliably
+          hide_side_toolbar: true,
+          allow_symbol_change: false,
+          details: false,
+          hotlist: false,
+          calendar: false,
+          // Only use Volume study - no RSI or MACD
           studies: [
-            'Volume@tv-basicstudies',
-            'RSI@tv-basicstudies',
-            'MACD@tv-basicstudies'
+            'Volume@tv-basicstudies'
           ],
           container_id: containerRef.current.id,
           overrides: {

@@ -7,7 +7,7 @@ interface CacheItem<T> {
 
 class CacheService {
   private cache = new Map<string, CacheItem<any>>();
-  private readonly DEFAULT_TTL = 30000; // 30 seconds
+  private readonly DEFAULT_TTL = 300000; // 5 minutes
 
   set<T>(key: string, data: T, ttl: number = this.DEFAULT_TTL): void {
     this.cache.set(key, {

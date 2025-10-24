@@ -70,11 +70,11 @@ export const MockTicker: React.FC<MockTickerProps> = ({
     
     loadData();
 
-    // Update data every 30 seconds (real data updates less frequently)
+    // Update data every 5 minutes to avoid rate limiting
     const interval = setInterval(async () => {
       const data = await fetchRealData();
       setTickerData(data);
-    }, 30000);
+    }, 300000);
 
     return () => clearInterval(interval);
   }, [symbols]);

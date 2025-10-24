@@ -244,7 +244,7 @@ const formatVolume = (volume: number): string => {
   return volume.toString();
 };
 
-// Real-time price updates from API
+// Real-time price updates from API with rate limiting
 export const subscribeToPriceUpdates = (
   callback: (prices: TokenPrice[]) => void
 ): (() => void) => {
@@ -255,7 +255,7 @@ export const subscribeToPriceUpdates = (
     } catch (error) {
       console.error('Error updating prices:', error);
     }
-  }, 30000); // Update every 30 seconds (real API data)
+  }, 300000); // Update every 5 minutes to avoid rate limiting
 
   return () => clearInterval(interval);
 };
