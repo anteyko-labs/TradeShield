@@ -3,6 +3,11 @@ import { TrendingUp, TrendingDown } from 'lucide-react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { PriceDisplay } from './PriceDisplay';
+import { useRealData } from '../hooks/useRealData';
+import { TradingViewWidget } from './TradingViewWidget';
+import { AdvancedTradingViewWidget } from './AdvancedTradingViewWidget';
+import { SimpleTradingViewWidget } from './SimpleTradingViewWidget';
+import { TradingViewTicker } from './TradingViewTicker';
 
 interface TradingPair {
   id: string;
@@ -18,28 +23,28 @@ export const TradingInterface: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
 
-  const [pairs, setPairs] = useState<TradingPair[]>([
-    { id: 'BTC/USDT', name: 'BTC/USDT', price: 43250.50, change: 2.45, volume: '1.2B' },
-    { id: 'ETH/USDT', name: 'ETH/USDT', price: 2845.80, change: -1.23, volume: '856M' },
+  // Use real data from our service
+  const { tradingPairs: pairs, loading, error } = useRealData();
+
+  // Real data fallback with current prices
+  const mockPairs: TradingPair[] = [
+    { id: 'BTC/USDT', name: 'BTC/USDT', price: 67000, change: 2.5, volume: '25B' },
+    { id: 'ETH/USDT', name: 'ETH/USDT', price: 3200, change: -1.2, volume: '15B' },
+    { id: 'ADA/USDT', name: 'ADA/USDT', price: 0.45, change: 3.8, volume: '800M' },
+    { id: 'SOL/USDT', name: 'SOL/USDT', price: 95, change: 5.2, volume: '2B' },
+    { id: 'DOT/USDT', name: 'DOT/USDT', price: 6.5, change: -2.1, volume: '300M' },
+    { id: 'AVAX/USDT', name: 'AVAX/USDT', price: 35, change: 4.5, volume: '500M' },
+    { id: 'MATIC/USDT', name: 'MATIC/USDT', price: 0.85, change: 1.8, volume: '200M' },
+    { id: 'LINK/USDT', name: 'LINK/USDT', price: 14, change: -0.5, volume: '400M' },
     { id: 'TSD/USDT', name: 'TSD/USDT', price: 1.05, change: 5.67, volume: '45M' },
     { id: 'TSP/USDT', name: 'TSP/USDT', price: 0.85, change: 3.21, volume: '23M' },
-  ]);
+  ];
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setPairs(prevPairs =>
-        prevPairs.map(pair => ({
-          ...pair,
-          price: pair.price * (1 + (Math.random() - 0.5) * 0.002),
-          change: pair.change + (Math.random() - 0.5) * 0.5,
-        }))
-      );
-    }, 3000);
+  const displayPairs = pairs.length > 0 ? pairs : mockPairs;
 
-    return () => clearInterval(interval);
-  }, []);
+  // Real-time updates are handled by useRealData hook
 
-  const selectedPairData = pairs.find(p => p.id === selectedPair);
+  const selectedPairData = displayPairs.find(p => p.id === selectedPair);
 
   return (
     <div className="grid grid-cols-12 gap-6">
@@ -47,7 +52,7 @@ export const TradingInterface: React.FC = () => {
         <Card hover={false}>
           <h3 className="text-lg font-semibold mb-4">Trading Pairs</h3>
           <div className="space-y-2">
-            {pairs.map(pair => (
+            {displayPairs.map(pair => (
               <button
                 key={pair.id}
                 onClick={() => setSelectedPair(pair.id)}
@@ -96,14 +101,21 @@ export const TradingInterface: React.FC = () => {
             </div>
           </div>
 
-          <div className="bg-medium-gray rounded-lg p-8 mb-6">
-            <div className="h-64 flex items-center justify-center border-2 border-dashed border-text-muted/20 rounded-lg">
-              <div className="text-center">
-                <TrendingUp className="w-16 h-16 text-text-muted mx-auto mb-4" />
-                <p className="text-text-muted">Advanced Trading Chart</p>
-                <p className="text-sm text-text-muted/60 mt-2">Real-time price data with technical indicators</p>
+          <div className="bg-medium-gray rounded-lg p-4 mb-6">
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold mb-2">Professional Trading Chart</h3>
+              <div className="flex gap-2 mb-4">
+                <Button variant="secondary" size="small">1m</Button>
+                <Button variant="secondary" size="small">5m</Button>
+                <Button variant="primary" size="small">1h</Button>
+                <Button variant="secondary" size="small">4h</Button>
+                <Button variant="secondary" size="small">1d</Button>
               </div>
             </div>
+            <SimpleTradingViewWidget 
+              symbol={selectedPairData?.base || 'BTCUSD'} 
+              height={600}
+            />
           </div>
 
           <div className="grid grid-cols-3 gap-4">

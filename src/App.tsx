@@ -1,22 +1,21 @@
 // React import not needed in this file
 import { LandingPage } from './pages/LandingPage';
 import { Dashboard } from './pages/Dashboard';
-import { Web3Provider } from './providers/Web3Provider';
-import { useWallet } from './hooks/useWallet';
+import { RealWeb3Provider, useWeb3 } from './providers/RealWeb3Provider';
 
 function AppContent() {
-  const { isConnected, connectWallet, disconnectWallet } = useWallet();
+  const { isConnected, connect, disconnect } = useWeb3();
 
   const handleConnect = async () => {
     try {
-      await connectWallet();
+      await connect();
     } catch (error) {
       console.error('Failed to connect wallet:', error);
     }
   };
 
   const handleDisconnect = () => {
-    disconnectWallet();
+    disconnect();
   };
 
   return (
@@ -32,9 +31,9 @@ function AppContent() {
 
 function App() {
   return (
-    <Web3Provider>
+    <RealWeb3Provider>
       <AppContent />
-    </Web3Provider>
+    </RealWeb3Provider>
   );
 }
 
