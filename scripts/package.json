@@ -1,0 +1,14 @@
+{
+  "name": "deploy-scripts",
+  "version": "1.0.0",
+  "description": "Contract deployment scripts",
+  "main": "deploy-contracts.js",
+  "scripts": {
+    "deploy": "node deploy-contracts.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "ethers": "^5.7.2",
+    "solc": "^0.8.30"
+  }
+}

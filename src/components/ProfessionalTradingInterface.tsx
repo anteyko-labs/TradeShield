@@ -5,6 +5,8 @@ import { useWeb3 } from '../providers/RealWeb3Provider';
 import { useRealData } from '../hooks/useRealData';
 import { CleanTradingViewWidget } from './CleanTradingViewWidget';
 import { tradingService } from '../services/tradingService';
+import { useTrading } from '../hooks/useTrading';
+import { Portfolio } from './Portfolio';
 
 interface TradingPair {
   id: string;
@@ -23,8 +25,14 @@ interface OrderBookEntry {
 }
 
 export const ProfessionalTradingInterface: React.FC = () => {
-  const { address, balance } = useWeb3();
+  const { address } = useWeb3();
   const { tradingPairs } = useRealData();
+  const { 
+    portfolio, 
+    createOrder, 
+    cancelOrder, 
+    updatePrices
+  } = useTrading(address);
   
   // State for trading
   const [selectedPair] = useState<TradingPair | null>(null);
@@ -32,7 +40,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const [side, setSide] = useState<'buy' | 'sell'>('buy');
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
-  // const [timeframe] = useState('1h');
+  const [showPortfolio, setShowPortfolio] = useState(false);
   
   // Mock order book data
   const [orderBook, setOrderBook] = useState<{
@@ -70,18 +78,25 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const displayPairs = tradingPairs.length > 0 ? tradingPairs : mockPairs;
   const currentPair = selectedPair || displayPairs[0];
 
-  // Update order book every 500ms for fast updates
+  // Update order book and prices every 500ms for fast updates
   useEffect(() => {
     const updateOrderBook = () => {
       const newOrderBook = tradingService.getOrderBook(currentPair?.id || 'BTC/USDT', currentPair?.price || 0);
       setOrderBook(newOrderBook);
+      
+      // Update prices for trading engine
+      if (currentPair) {
+        updatePrices({
+          [currentPair.id]: currentPair.price
+        });
+      }
     };
 
     updateOrderBook();
     const interval = setInterval(updateOrderBook, 500);
 
     return () => clearInterval(interval);
-  }, [currentPair]);
+  }, [currentPair, updatePrices]);
 
   // Real trading functions
   const executeTrade = async () => {
@@ -95,26 +110,28 @@ export const ProfessionalTradingInterface: React.FC = () => {
       return;
     }
 
-    try {
-      // Here you would implement real trading logic
-      // For now, we'll simulate a trade
-      const tradeData = {
-        pair: currentPair?.id,
-        side,
-        type: orderType,
-        amount: parseFloat(amount),
-        price: orderType === 'limit' ? parseFloat(price) : currentPair?.price,
-        timestamp: new Date().toISOString()
-      };
+    if (orderType === 'limit' && (!price || parseFloat(price) <= 0)) {
+      alert('Please enter a valid price for limit order');
+      return;
+    }
 
-      console.log('Executing trade:', tradeData);
-      
-      // Simulate trade execution
-      alert(`Trade executed: ${side.toUpperCase()} ${amount} ${currentPair?.id} at ${orderType === 'market' ? 'market price' : price}`);
-      
-      // Reset form
-      setAmount('');
-      setPrice('');
+    try {
+      const result = await createOrder(
+        currentPair?.id || 'BTC/USDT',
+        side,
+        orderType,
+        parseFloat(amount),
+        orderType === 'limit' ? parseFloat(price) : undefined
+      );
+
+      if (result.success) {
+        alert(`Order created successfully: ${side.toUpperCase()} ${amount} ${currentPair?.id}`);
+        // Reset form
+        setAmount('');
+        setPrice('');
+      } else {
+        alert(`Order failed: ${result.error}`);
+      }
     } catch (error) {
       console.error('Trade execution failed:', error);
       alert('Trade execution failed. Please try again.');
@@ -178,8 +195,14 @@ export const ProfessionalTradingInterface: React.FC = () => {
           
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-400">
-              Balance: {balance ? `${parseFloat(balance).toFixed(4)} ETH` : '0.0000 ETH'}
+              Trading Balance: ${portfolio ? portfolio.availableBalance.toFixed(2) : '0.00'}
             </div>
+            <button
+              onClick={() => setShowPortfolio(!showPortfolio)}
+              className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
+            >
+              {showPortfolio ? 'Hide' : 'Portfolio'}
+            </button>
             <Button variant="secondary" size="small">
               <Wallet className="w-4 h-4 mr-2" />
               {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect'}
@@ -187,6 +210,22 @@ export const ProfessionalTradingInterface: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Portfolio Display */}
+      {showPortfolio && portfolio && (
+        <div className="bg-gray-800 border-b border-gray-700 p-4">
+          <Portfolio
+            positions={portfolio.positions}
+            orders={portfolio.orders}
+            trades={portfolio.trades}
+            totalBalance={portfolio.totalBalance}
+            availableBalance={portfolio.availableBalance}
+            totalPnl={portfolio.totalPnl}
+            totalPnlPercent={portfolio.totalPnlPercent}
+            onCancelOrder={cancelOrder}
+          />
+        </div>
+      )}
 
       {/* Main Trading Interface - Full Width Layout */}
       <div className="flex-1 flex">
