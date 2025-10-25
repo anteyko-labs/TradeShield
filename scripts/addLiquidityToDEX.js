@@ -1,120 +1,137 @@
-// ДОБАВЛЕНИЕ ЛИКВИДНОСТИ В DEX КОНТРАКТ
+// ДОБАВЛЕНИЕ ЛИКВИДНОСТИ В DEX
 const { ethers } = require('ethers');
 
 async function addLiquidityToDEX() {
-  console.log('🔧 ДОБАВЛЕНИЕ ЛИКВИДНОСТИ В DEX КОНТРАКТ');
-  console.log('='.repeat(60));
-
+  console.log('💧 ДОБАВЛЕНИЕ ЛИКВИДНОСТИ В DEX');
+  console.log('='.repeat(50));
+  
+  // Подключение к Sepolia
+  const provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/4c8f4a87f45c4e9d9a655e66dfacfcd9');
+  
+  // ВАЖНО: Замените на ваш приватный ключ!
+  const privateKey = '22547068237db8ba6738009e6cc6279e33cec1d5665033b0b881fc49b11e71ba';
+  const wallet = new ethers.Wallet(privateKey, provider);
+  
+  console.log('📡 Подключение к Sepolia...');
+  console.log('👤 Адрес:', wallet.address);
+  
+  // Адреса
+  const DEX_ADDRESS = '0x72bfaa294E6443E944ECBdad428224cC050C658E';
+  const USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
+  const BTC_ADDRESS = '0xC941593909348e941420D5404Ab00b5363b1dDB4';
+  const ETH_ADDRESS = '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb';
+  
+  // ABI для DEX
+  const DEX_ABI = [
+    "function addLiquidity(address tokenA, address tokenB, uint256 amountA, uint256 amountB) external",
+    "function getReserves(address tokenA, address tokenB) external view returns (uint256, uint256)",
+    "function owner() external view returns (address)"
+  ];
+  
+  const dexContract = new ethers.Contract(DEX_ADDRESS, DEX_ABI, wallet);
+  
   try {
-    // Подключение к сети
-    const provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/4c8f4a87f45c4e9d9a655e66dfacfcd9');
+    console.log('🔍 Проверяем владельца DEX...');
+    const owner = await dexContract.owner();
+    console.log('👑 Владелец DEX:', owner);
     
-    // ВАЖНО: Замените на ваш приватный ключ!
-    const privateKey = '22547068237db8ba6738009e6cc6279e33cec1d5665033b0b881fc49b11e71ba'; // ЗАМЕНИТЕ НА РЕАЛЬНЫЙ!
-    
-    if (privateKey === 'YOUR_PRIVATE_KEY_HERE') {
-      console.log('❌ ОШИБКА: Замените privateKey на ваш реальный приватный ключ!');
-      console.log('💡 Инструкции:');
-      console.log('1. Откройте MetaMask');
-      console.log('2. Нажмите на три точки → Account Details → Export Private Key');
-      console.log('3. Скопируйте приватный ключ');
-      console.log('4. Замените YOUR_PRIVATE_KEY_HERE на ваш ключ');
+    if (owner.toLowerCase() !== wallet.address.toLowerCase()) {
+      console.log('❌ Мы не владелец DEX!');
       return;
     }
     
-    const wallet = new ethers.Wallet(privateKey, provider);
+    console.log('✅ Мы владелец DEX!');
     
-    // Адреса
-    const DEX_ADDRESS = '0x72bfaa294E6443E944ECBdad428224cC050C658E';
-    const USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
-    const BTC_ADDRESS = '0xC941593909348e941420D5404Ab00b5363b1dDB4';
-    const ETH_ADDRESS = '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb';
+    // Проверяем балансы пользователя
+    console.log('\n💰 Проверяем балансы пользователя...');
     
-    // ABI для DEX
-    const DEX_ABI = [
-      "function addLiquidity(address tokenA, address tokenB, uint256 amountA, uint256 amountB) external",
-      "function getReserves(address tokenA, address tokenB) view returns (uint256 reserveA, uint256 reserveB)"
-    ];
-    
-    // ABI для токенов
-    const TOKEN_ABI = [
+    const usdtContract = new ethers.Contract(USDT_ADDRESS, [
       "function balanceOf(address owner) view returns (uint256)",
-      "function approve(address spender, uint256 amount) returns (bool)",
-      "function decimals() view returns (uint8)"
-    ];
+      "function approve(address spender, uint256 amount) returns (bool)"
+    ], wallet);
     
-    const dexContract = new ethers.Contract(DEX_ADDRESS, DEX_ABI, wallet);
-    const usdtContract = new ethers.Contract(USDT_ADDRESS, TOKEN_ABI, wallet);
-    const btcContract = new ethers.Contract(BTC_ADDRESS, TOKEN_ABI, wallet);
-    const ethContract = new ethers.Contract(ETH_ADDRESS, TOKEN_ABI, wallet);
+    const btcContract = new ethers.Contract(BTC_ADDRESS, [
+      "function balanceOf(address owner) view returns (uint256)",
+      "function approve(address spender, uint256 amount) returns (bool)"
+    ], wallet);
     
-    console.log(`👤 Используем кошелек: ${wallet.address}`);
+    const userAddress = wallet.address;
     
-    // Проверяем балансы
-    const usdtBalance = await usdtContract.balanceOf(wallet.address);
-    const btcBalance = await btcContract.balanceOf(wallet.address);
-    const ethBalance = await ethContract.balanceOf(wallet.address);
+    const userUsdtBalance = await usdtContract.balanceOf(userAddress);
+    const userBtcBalance = await btcContract.balanceOf(userAddress);
     
-    console.log('\n📊 БАЛАНСЫ:');
-    console.log(`💰 USDT: ${ethers.utils.formatUnits(usdtBalance, 6)}`);
-    console.log(`💰 BTC: ${ethers.utils.formatUnits(btcBalance, 8)}`);
-    console.log(`💰 ETH: ${ethers.utils.formatUnits(ethBalance, 18)}`);
+    console.log('💵 USDT у пользователя:', ethers.utils.formatUnits(userUsdtBalance, 6));
+    console.log('₿ BTC у пользователя:', ethers.utils.formatUnits(userBtcBalance, 8));
     
     // Добавляем ликвидность USDT/BTC
-    if (usdtBalance.gt(0) && btcBalance.gt(0)) {
-      console.log('\n🔄 Добавляем ликвидность USDT/BTC...');
-      
-      // Одобряем трату токенов
-      const usdtApproveTx = await usdtContract.approve(DEX_ADDRESS, usdtBalance);
-      await usdtApproveTx.wait();
-      
-      const btcApproveTx = await btcContract.approve(DEX_ADDRESS, btcBalance);
-      await btcApproveTx.wait();
-      
-      // Добавляем ликвидность
-      const addLiquidityTx = await dexContract.addLiquidity(
-        USDT_ADDRESS,
-        BTC_ADDRESS,
-        usdtBalance,
-        btcBalance
-      );
-      
-      await addLiquidityTx.wait();
-      console.log(`✅ Ликвидность USDT/BTC добавлена! TX: ${addLiquidityTx.hash}`);
+    console.log('\n💧 Добавляем ликвидность USDT/BTC...');
+    
+    const liquidityUSDT = ethers.utils.parseUnits('1000', 6); // 1000 USDT
+    const liquidityBTC = ethers.utils.parseUnits('0.01', 8);  // 0.01 BTC
+    
+    console.log('💵 Ликвидность USDT:', ethers.utils.formatUnits(liquidityUSDT, 6));
+    console.log('₿ Ликвидность BTC:', ethers.utils.formatUnits(liquidityBTC, 8));
+    
+    // Проверяем, достаточно ли токенов
+    if (userUsdtBalance.lt(liquidityUSDT)) {
+      console.log('❌ Недостаточно USDT для добавления ликвидности!');
+      return;
     }
     
-    // Добавляем ликвидность USDT/ETH
-    if (usdtBalance.gt(0) && ethBalance.gt(0)) {
-      console.log('\n🔄 Добавляем ликвидность USDT/ETH...');
-      
-      // Одобряем трату токенов
-      const usdtApproveTx = await usdtContract.approve(DEX_ADDRESS, usdtBalance);
-      await usdtApproveTx.wait();
-      
-      const ethApproveTx = await ethContract.approve(DEX_ADDRESS, ethBalance);
-      await ethApproveTx.wait();
-      
-      // Добавляем ликвидность
-      const addLiquidityTx = await dexContract.addLiquidity(
-        USDT_ADDRESS,
-        ETH_ADDRESS,
-        usdtBalance,
-        ethBalance
-      );
-      
-      await addLiquidityTx.wait();
-      console.log(`✅ Ликвидность USDT/ETH добавлена! TX: ${addLiquidityTx.hash}`);
+    if (userBtcBalance.lt(liquidityBTC)) {
+      console.log('❌ Недостаточно BTC для добавления ликвидности!');
+      return;
     }
     
-    console.log('\n✅ ЛИКВИДНОСТЬ ДОБАВЛЕНА!');
-    console.log('Теперь боты могут торговать, а пользователь может покупать/продавать!');
+    // Одобряем токены для DEX
+    console.log('🔐 Одобряем USDT для DEX...');
+    const approveUsdtTx = await usdtContract.approve(DEX_ADDRESS, liquidityUSDT);
+    await approveUsdtTx.wait();
+    console.log('✅ USDT одобрен!');
+    
+    console.log('🔐 Одобряем BTC для DEX...');
+    const approveBtcTx = await btcContract.approve(DEX_ADDRESS, liquidityBTC);
+    await approveBtcTx.wait();
+    console.log('✅ BTC одобрен!');
+    
+    // Добавляем ликвидность
+    console.log('💧 Добавляем ликвидность USDT/BTC...');
+    const addLiquidityTx = await dexContract.addLiquidity(
+      USDT_ADDRESS,
+      BTC_ADDRESS,
+      liquidityUSDT,
+      liquidityBTC,
+      { gasLimit: 500000 } // Увеличиваем лимит газа
+    );
+    
+    console.log('⏳ Ожидаем подтверждения...');
+    await addLiquidityTx.wait();
+    
+    console.log('✅ Ликвидность USDT/BTC добавлена!');
+    console.log('🔗 TX Hash:', addLiquidityTx.hash);
+    
+    // Проверяем резервы
+    console.log('\n🔍 Проверяем резервы USDT/BTC...');
+    const reserves = await dexContract.getReserves(USDT_ADDRESS, BTC_ADDRESS);
+    console.log('💵 USDT резерв:', ethers.utils.formatUnits(reserves[0], 6));
+    console.log('₿ BTC резерв:', ethers.utils.formatUnits(reserves[1], 8));
+    
+    console.log('\n🎯 ЛИКВИДНОСТЬ ДОБАВЛЕНА!');
+    console.log('✅ USDT/BTC пара активна');
+    console.log('✅ Ликвидность добавлена');
+    console.log('✅ Можно тестировать торговлю!');
     
   } catch (error) {
-    console.error('❌ Ошибка:', error.message);
+    console.error('❌ Ошибка добавления ликвидности:', error.message);
+    
+    if (error.message.includes('execution reverted')) {
+      console.log('\n💡 ВОЗМОЖНЫЕ ПРИЧИНЫ:');
+      console.log('1. Недостаточно токенов');
+      console.log('2. Токены не одобрены');
+      console.log('3. Пара не существует');
+      console.log('4. Проблема с контрактом');
+    }
   }
-  
-  console.log('\n✅ СКРИПТ ЗАВЕРШЕН');
-  console.log('='.repeat(60));
 }
 
 addLiquidityToDEX();
