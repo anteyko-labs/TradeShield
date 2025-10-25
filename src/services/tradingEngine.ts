@@ -27,7 +27,7 @@ class TradingEngine {
   private dexContract?: ethers.Contract;
   
   // РЕАЛЬНЫЕ адреса
-  private readonly DEX_ADDRESS = '0x...'; // Нужен адрес SimpleDEX
+  private readonly DEX_ADDRESS = '0x72bfaa294E6443E944ECBdad428224cC050C658E'; // SimpleDEX
   private readonly USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
   private readonly BTC_ADDRESS = '0xC941593909348e941420D5404Ab00b5363b1dDB4';
   private readonly ETH_ADDRESS = '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb';
@@ -50,12 +50,14 @@ class TradingEngine {
   ];
 
   constructor() {
-    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/your-infura-key');
+    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/4c8f4a87f45c4e9d9a655e66dfacfcd9');
     this.feeWallet = new ethers.Wallet(this.FEE_WALLET_PRIVATE_KEY, this.provider);
   }
 
-  async initialize(dexAddress: string): Promise<void> {
-    this.DEX_ADDRESS = dexAddress;
+  async initialize(dexAddress?: string): Promise<void> {
+    if (dexAddress) {
+      this.DEX_ADDRESS = dexAddress;
+    }
     this.dexContract = new ethers.Contract(this.DEX_ADDRESS, this.DEX_ABI, this.feeWallet);
     console.log('🚀 TradingEngine инициализирован с DEX:', this.DEX_ADDRESS);
   }
@@ -98,6 +100,11 @@ class TradingEngine {
       }, 0);
       
       console.log(`💰 Общая комиссия батча: ${totalFee.toFixed(6)} USDT`);
+      
+      // Проверяем инициализацию
+      if (!this.dexContract) {
+        throw new Error('DEX контракт не инициализирован');
+      }
       
       // Выполняем батч транзакцию
       const tx = await this.dexContract.executeBatch(
@@ -147,7 +154,9 @@ class TradingEngine {
     setInterval(async () => {
       if (this.orderQueue.length > 0) {
         console.log(`⏰ Таймаут батча: ${this.orderQueue.length} ордеров в очереди`);
-        await this.executeBatch();
+        // ВРЕМЕННО ОТКЛЮЧАЕМ автоматическое выполнение батчей
+        console.log('⚠️ Автоматическое выполнение батчей отключено');
+        // await this.executeBatch();
       }
     }, this.batchTimeout);
   }

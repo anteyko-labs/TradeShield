@@ -86,13 +86,13 @@ const getFallbackRealData = (): RealPriceData[] => {
     },
     {
       symbol: 'ETH',
-      price: 3200,
-      change24h: -40,
-      changePercent24h: -1.2,
+      price: 3000,
+      change24h: 50,
+      changePercent24h: 1.5,
       volume24h: 15000000000,
       marketCap: 380000000000,
-      high24h: 3250,
-      low24h: 3150,
+      high24h: 3050,
+      low24h: 2950,
       lastUpdated: new Date().toISOString()
     },
     {

@@ -8,9 +8,12 @@ import { TradingLogs } from '../components/TradingLogs';
 import { PersistentBotBalances } from '../components/PersistentBotBalances';
 import { DatabaseViewer } from '../components/DatabaseViewer';
 import { realBotService } from '../services/realBotService';
+import { tradingEngine } from '../services/tradingEngine';
 import { TradingEngineView } from '../components/TradingEngineView';
+import { BatchTradingTest } from '../components/BatchTradingTest';
+import { HistoryViewer } from '../components/HistoryViewer';
 import { RealMEVProtection } from '../components/RealMEVProtection';
-import { RealTokenManagement } from '../components/RealTokenManagement';
+import { SimpleTokenManagement } from '../components/SimpleTokenManagement';
 import { TradingViewTicker } from '../components/TradingViewTicker';
 import { SimpleTicker } from '../components/SimpleTicker';
 import { MockTicker } from '../components/MockTicker';
@@ -19,7 +22,7 @@ import { TradingTools } from '../components/TradingTools';
 import { Card } from '../components/Card';
 import { useWeb3 } from '../providers/RealWeb3Provider';
 
-type TabType = 'trading' | 'mev' | 'tokens' | 'logs' | 'bots' | 'database' | 'analytics' | 'tools' | 'engine';
+type TabType = 'trading' | 'mev' | 'tokens' | 'logs' | 'bots' | 'database' | 'analytics' | 'tools' | 'engine' | 'batchtest' | 'history';
 
 interface DashboardProps {
   onDisconnect: () => void;
@@ -30,8 +33,10 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
   const { address, balance, chainId, getShortAddress } = useWeb3();
   
   // Инициализируем торговую систему
-  React.  useEffect(() => {
+  React.useEffect(() => {
     realBotService.initialize();
+    tradingEngine.initialize(); // Инициализируем tradingEngine
+    tradingEngine.startBatchProcessor(); // Запускаем автоматический батчер
   }, []);
   
   const walletAddress = address ? getShortAddress(address) : '0x742d...4f2a';
@@ -131,6 +136,22 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
                   <Settings className="w-4 h-4 inline mr-2" />
                   Engine
                 </Button>
+                <Button
+                  variant={activeTab === 'batchtest' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('batchtest')}
+                >
+                  <Settings className="w-4 h-4 inline mr-2" />
+                  Batch Test
+                </Button>
+                <Button
+                  variant={activeTab === 'history' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('history')}
+                >
+                  <Settings className="w-4 h-4 inline mr-2" />
+                  History
+                </Button>
               </div>
             </div>
 
@@ -175,12 +196,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
         <div className="animate-fade-in">
           {activeTab === 'trading' && <ProfessionalTradingInterface />}
           {activeTab === 'mev' && <RealMEVProtection />}
-          {activeTab === 'tokens' && <RealTokenManagement />}
+          {activeTab === 'tokens' && <SimpleTokenManagement />}
           {activeTab === 'logs' && <TradingLogs logs={realBotService.getTrades()} />}
           {activeTab === 'bots' && <PersistentBotBalances bots={realBotService.getBots()} />}
           {activeTab === 'database' && <DatabaseViewer />}
           {activeTab === 'tools' && <TradingTools />}
           {activeTab === 'engine' && <TradingEngineView />}
+          {activeTab === 'batchtest' && <BatchTradingTest />}
+          {activeTab === 'history' && <HistoryViewer />}
           {activeTab === 'analytics' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

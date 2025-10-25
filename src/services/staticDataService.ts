@@ -27,13 +27,13 @@ export const getStaticCryptoPrices = (): StaticPriceData[] => {
     },
     {
       symbol: 'ETH',
-      price: 3907.59,
-      change24h: 56.59,
-      changePercent24h: 1.47,
+      price: 3000,
+      change24h: 50,
+      changePercent24h: 1.5,
       volume24h: 15000000000,
       marketCap: 470000000000,
-      high24h: 3950,
-      low24h: 3850,
+      high24h: 3050,
+      low24h: 2950,
       lastUpdated: new Date().toISOString()
     },
     {

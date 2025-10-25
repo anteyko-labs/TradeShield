@@ -10,6 +10,9 @@ import { SimpleBalanceTest } from './SimpleBalanceTest';
 import { simpleMintService } from '../services/simpleMintService';
 import { simpleTradingService } from '../services/simpleTradingService';
 import { realBotService } from '../services/realBotService';
+import { userTradingService } from '../services/userTradingService';
+import { userOrderService } from '../services/userOrderService';
+import { userBalanceService } from '../services/userBalanceService';
 import { TradingLogs } from './TradingLogs';
 import { BotBalances } from './BotBalances';
 
@@ -54,11 +57,22 @@ export const ProfessionalTradingInterface: React.FC = () => {
   // Инициализируем сервисы
   useEffect(() => {
     if (provider && signer) {
-      simpleMintService.initialize(provider, signer);
-      simpleTradingService.initialize(provider, signer);
-      realBotService.initialize();
+      const initializeServices = async () => {
+        simpleMintService.initialize(provider, signer);
+        simpleTradingService.initialize(provider, signer);
+        realBotService.initialize();
+        userTradingService.initialize(provider, signer);
+        await userBalanceService.initialize(provider, signer);
+        
+        // Добавляем BTC токены пользователю для тестирования
+        if (address) {
+          userBalanceService.addBTCTokensToUser(address, 1); // 1 BTC для тестирования
+        }
+      };
+      
+      initializeServices();
     }
-  }, [provider, signer]);
+  }, [provider, signer, address]);
   
   // State for trading
   const [selectedPair] = useState<TradingPair | null>(null);
@@ -69,25 +83,13 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [activeTab, setActiveTab] = useState<'trading' | 'logs' | 'bots'>('trading');
   
-  // Mock order book data
+  // РЕАЛЬНЫЙ ордербук - пустой по умолчанию, заполняется из ботов
   const [orderBook, setOrderBook] = useState<{
     asks: OrderBookEntry[];
     bids: OrderBookEntry[];
   }>({
-    asks: [
-      { price: 110203.5, size: 0.5, total: 0.5 },
-      { price: 110204.0, size: 1.2, total: 1.7 },
-      { price: 110204.5, size: 0.8, total: 2.5 },
-      { price: 110205.0, size: 2.1, total: 4.6 },
-      { price: 110205.5, size: 1.5, total: 6.1 },
-    ],
-    bids: [
-      { price: 110203.0, size: 1.8, total: 1.8 },
-      { price: 110202.5, size: 2.3, total: 4.1 },
-      { price: 110202.0, size: 1.1, total: 5.2 },
-      { price: 110201.5, size: 3.2, total: 8.4 },
-      { price: 110201.0, size: 1.9, total: 10.3 },
-    ]
+    asks: [],
+    bids: []
   });
 
   // Real data fallback with current prices
@@ -106,19 +108,51 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const currentPair = selectedPair || displayPairs[0];
 
 
-  // Update order book and prices every 500ms for fast updates
+  // Update order book and prices every 1 second for fast updates
   useEffect(() => {
     const updateOrderBook = () => {
       try {
-        const realOrderBook = realBotService.getOrderBook();
-        setOrderBook(realOrderBook);
+        console.log('🔄 Обновление ордербука...');
+        
+        // Получаем РЕАЛЬНЫЕ ордера ботов
+        const botOrders = realBotService.getOrderBook();
+        console.log(`📊 Боты создали: ${botOrders.bids.length} bid, ${botOrders.asks.length} ask`);
+        
+        // Получаем пользовательские ордера
+        const userOrders = userOrderService.getOrderBook();
+        console.log(`👤 Пользователь создал: ${userOrders.bids.length} bid, ${userOrders.asks.length} ask`);
+        
+        // Объединяем РЕАЛЬНЫЕ ордера
+        const combinedOrders = {
+          bids: [...botOrders.bids, ...userOrders.bids]
+            .sort((a, b) => b.price - a.price)
+            .slice(0, 9),
+          asks: [...botOrders.asks, ...userOrders.asks]
+            .sort((a, b) => a.price - b.price)
+            .slice(0, 9)
+        };
+        
+        console.log(`✅ Итоговый ордербук: ${combinedOrders.bids.length} bid, ${combinedOrders.asks.length} ask`);
+        
+        // Показываем примеры ордеров
+        if (combinedOrders.bids.length > 0) {
+          const bestBid = combinedOrders.bids[0];
+          console.log(`📈 Лучший bid: ${bestBid.amount?.toFixed(3) || bestBid.size} ${bestBid.token || 'BTC'} @ $${bestBid.price.toFixed(2)}`);
+        }
+        
+        if (combinedOrders.asks.length > 0) {
+          const bestAsk = combinedOrders.asks[0];
+          console.log(`📉 Лучший ask: ${bestAsk.amount?.toFixed(3) || bestAsk.size} ${bestAsk.token || 'BTC'} @ $${bestAsk.price.toFixed(2)}`);
+        }
+        
+        setOrderBook(combinedOrders);
       } catch (error) {
-        console.log('Order book update failed:', error);
+        console.error('❌ Ошибка обновления ордербука:', error);
       }
     };
 
     updateOrderBook();
-    const interval = setInterval(updateOrderBook, 2000); // Увеличиваем интервал
+    const interval = setInterval(updateOrderBook, 2000); // Обновление каждые 2 секунды
 
     return () => clearInterval(interval);
   }, [currentPair?.id]); // Только при изменении пары
@@ -142,30 +176,46 @@ export const ProfessionalTradingInterface: React.FC = () => {
 
     try {
       const tokenSymbol = currentPair?.id?.split('/')[0] || 'BTC';
-      const tradePrice = orderType === 'limit' ? parseFloat(price) : currentPair?.price || 110000;
+      const tradePrice = orderType === 'limit' ? parseFloat(price) : currentPair?.price || 65000;
       
-      // Используем реальную торговую систему
-      const result = await realTradingSystem.placeOrder(
-        address,
-        side,
-        tokenSymbol,
-        parseFloat(amount),
-        tradePrice
-      );
-
-      if (result.success) {
-        alert(`✅ ${side.toUpperCase()} ${amount} ${tokenSymbol} order placed successfully!`);
-        console.log('📊 Trade ID:', result.tradeId);
+      // Если это рыночный ордер, сразу выполняем БЕЗ создания ордера
+      if (orderType === 'market') {
+        const result = side === 'buy' 
+          ? await userTradingService.buyToken(tokenSymbol, amount)
+          : await userTradingService.sellToken(tokenSymbol, amount);
         
-        // Обновляем балансы
-        await loadBalances();
-        
-        // Reset form
-        setAmount('');
-        setPrice('');
+        if (result.success) {
+          alert(`✅ ${side.toUpperCase()} ${amount} ${tokenSymbol} executed successfully!`);
+          // Обновляем балансы после успешной торговли
+          loadBalances();
+        } else {
+          alert(`❌ Trade failed: ${result.error}`);
+        }
       } else {
-        alert(`❌ Order failed: ${result.error}`);
+        // Лимитный ордер - создаем и добавляем в ордербук
+        let order;
+        try {
+          order = await userOrderService.createOrder(
+            address,
+            side,
+            tokenSymbol,
+            parseFloat(amount),
+            tradePrice
+          );
+          alert(`📝 ${side.toUpperCase()} ${amount} ${tokenSymbol} @ $${tradePrice} order placed!`);
+          console.log('📊 Order ID:', order.id);
+        } catch (error: any) {
+          alert(`❌ Ошибка создания ордера: ${error.message}`);
+          return;
+        }
       }
+        
+      // Обновляем балансы
+      await loadBalances();
+      
+      // Reset form
+      setAmount('');
+      setPrice('');
       
     } catch (error) {
       console.error('Order placement failed:', error);
@@ -304,7 +354,18 @@ export const ProfessionalTradingInterface: React.FC = () => {
                    </div>
                    <div>
                      <h4 className="text-sm text-gray-400 mb-2">Positions</h4>
-                     <div className="text-gray-500 text-sm">No positions</div>
+                     {simpleBalances.length > 0 ? (
+                       simpleBalances
+                         .filter(balance => balance.balance > 0 && balance.symbol !== 'USDT')
+                         .map((balance, index) => (
+                           <div key={index} className="flex justify-between text-sm">
+                             <span>{balance.symbol}:</span>
+                             <span className="text-green-400">{balance.balance.toFixed(6)}</span>
+                           </div>
+                         ))
+                     ) : (
+                       <div className="text-gray-500 text-sm">Loading positions...</div>
+                     )}
                    </div>
                  </div>
             <div className="mt-4 pt-4 border-t border-gray-700">
@@ -314,8 +375,8 @@ export const ProfessionalTradingInterface: React.FC = () => {
                  </div>
               <div className="flex justify-between text-sm">
                 <span>Total PnL:</span>
-                <span className={`font-semibold ${getTotalPnl() >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                  {getTotalPnl() >= 0 ? '+' : ''}${getTotalPnl().toFixed(2)} ({getTotalPnlPercent() >= 0 ? '+' : ''}{getTotalPnlPercent().toFixed(2)}%)
+                <span className="font-semibold text-gray-400">
+                  $0.00 (0.00%)
                 </span>
               </div>
             </div>
@@ -400,15 +461,15 @@ export const ProfessionalTradingInterface: React.FC = () => {
                 {/* Red background gradient for sell orders */}
                 <div 
                   className="absolute inset-0 bg-red-500 opacity-5 rounded"
-                  style={{ width: `${((ask.total || 0) / 30) * 100}%` }}
+                  style={{ width: `${((ask.total || ask.amount * ask.price || 0) / 30) * 100}%` }}
                 />
                 <span className="text-right text-red-400 font-mono relative z-10">{formatPrice(ask.price || 0)}</span>
-                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(ask.size || 0)}</span>
-                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(ask.total || 0)}</span>
+                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(ask.size || ask.amount || 0)}</span>
+                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(ask.total || ask.amount * ask.price || 0)}</span>
               </div>
             )) : (
               <div className="text-center text-gray-500 text-xs py-4">
-                No sell orders available
+                Загрузка ордеров продажи...
               </div>
             )}
             
@@ -427,15 +488,15 @@ export const ProfessionalTradingInterface: React.FC = () => {
                 {/* Green background gradient for buy orders */}
                 <div 
                   className="absolute inset-0 bg-green-500 opacity-5 rounded"
-                  style={{ width: `${((bid.total || 0) / 30) * 100}%` }}
+                  style={{ width: `${((bid.total || bid.amount * bid.price || 0) / 30) * 100}%` }}
                 />
                 <span className="text-right text-green-400 font-mono relative z-10">{formatPrice(bid.price || 0)}</span>
-                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(bid.size || 0)}</span>
-                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(bid.total || 0)}</span>
+                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(bid.size || bid.amount || 0)}</span>
+                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(bid.total || bid.amount * bid.price || 0)}</span>
               </div>
             )) : (
               <div className="text-center text-gray-500 text-xs py-4">
-                No buy orders available
+                Загрузка ордеров покупки...
               </div>
             )}
           </div>

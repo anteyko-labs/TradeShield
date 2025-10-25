@@ -25,8 +25,8 @@ class RealTradingService {
   private tokenRegistry?: ethers.Contract;
   
   // РЕАЛЬНЫЕ адреса контрактов
-  private readonly DEX_ADDRESS = '0x...'; // Нужен адрес SimpleDEX
-  private readonly TOKEN_REGISTRY_ADDRESS = '0x...'; // Нужен адрес TokenRegistry
+  private readonly DEX_ADDRESS = '0x72bfaa294E6443E944ECBdad428224cC050C658E'; // SimpleDEX
+  private readonly TOKEN_REGISTRY_ADDRESS = '0xb8b8F8f7Da48b335AF86cf845F5a0506989cc66A'; // TokenRegistry
   
   // РЕАЛЬНЫЕ адреса токенов
   private readonly USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
@@ -51,7 +51,7 @@ class RealTradingService {
   ];
 
   constructor() {
-    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/your-infura-key');
+    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161');
   }
 
   async initialize(provider: ethers.providers.Web3Provider, signer: ethers.Signer): Promise<void> {

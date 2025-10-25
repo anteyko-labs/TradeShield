@@ -186,4 +186,112 @@ contract SimpleDEX {
         );
         return success && (data.length == 0 || abi.decode(data, (bool)));
     }
+    
+    // ========== БАТЧИНГ ФУНКЦИИ ==========
+    
+    // Выполнить батч ордеров (до 10 ордеров за одну транзакцию)
+    function executeBatch(
+        address[] memory users,
+        address[] memory tokensIn,
+        address[] memory tokensOut,
+        uint256[] memory amountsIn,
+        uint256[] memory minAmountsOut
+    ) external returns (bool) {
+        require(users.length == tokensIn.length, "Array length mismatch");
+        require(users.length == tokensOut.length, "Array length mismatch");
+        require(users.length == amountsIn.length, "Array length mismatch");
+        require(users.length == minAmountsOut.length, "Array length mismatch");
+        require(users.length <= 10, "Too many orders in batch");
+        require(users.length > 0, "Empty batch");
+        
+        uint256 totalFees = 0;
+        
+        for (uint256 i = 0; i < users.length; i++) {
+            address user = users[i];
+            address tokenIn = tokensIn[i];
+            address tokenOut = tokensOut[i];
+            uint256 amountIn = amountsIn[i];
+            uint256 minAmountOut = minAmountsOut[i];
+            
+            // Вычисляем количество токенов на выходе
+            uint256 amountOut = getAmountOut(tokenIn, tokenOut, amountIn);
+            require(amountOut >= minAmountOut, "Slippage too high");
+            
+            // Вычисляем комиссию (0.2%)
+            uint256 fee = (amountIn * 20) / 10000; // 0.2%
+            totalFees += fee;
+            
+            // Переводим токены от пользователя к контракту
+            require(transferToken(tokenIn, user, address(this), amountIn), "Transfer failed");
+            
+            // Переводим токены от контракта к пользователю
+            require(transferToken(tokenOut, address(this), user, amountOut), "Transfer failed");
+            
+            // Создаем ордер
+            Order memory newOrder = Order({
+                user: user,
+                tokenIn: tokenIn,
+                tokenOut: tokenOut,
+                amountIn: amountIn,
+                minAmountOut: minAmountOut,
+                timestamp: block.timestamp,
+                isFilled: true
+            });
+            
+            orders.push(newOrder);
+            userOrders[user].push(orders.length - 1);
+            
+            emit OrderPlaced(orders.length - 1, user, tokenIn, tokenOut, amountIn);
+            emit OrderFilled(orders.length - 1, user, amountOut);
+        }
+        
+        // Переводим комиссии на кошелек владельца
+        if (totalFees > 0) {
+            // Предполагаем что комиссии в USDT
+            address usdtToken = 0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6;
+            require(transferToken(usdtToken, address(this), owner, totalFees), "Fee transfer failed");
+        }
+        
+        return true;
+    }
+    
+    // Получить количество токенов на выходе
+    function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn) public view returns (uint256) {
+        bytes32 pairHash = keccak256(abi.encodePacked(tokenIn, tokenOut));
+        TradingPair storage pair = pairs[pairHash];
+        
+        require(pair.isActive, "Pair not active");
+        
+        // Простая формула AMM: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
+        uint256 reserveIn = pair.reserveA;
+        uint256 reserveOut = pair.reserveB;
+        
+        if (tokenIn == pair.tokenB) {
+            reserveIn = pair.reserveB;
+            reserveOut = pair.reserveA;
+        }
+        
+        uint256 amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
+        return amountOut;
+    }
+    
+    // Собрать комиссии (только владелец)
+    function collectFees() external onlyOwner {
+        // Комиссии уже переведены в executeBatch
+        // Эта функция для совместимости с фронтендом
+    }
+    
+    // Получить баланс комиссий
+    function getFeeBalance() external view returns (uint256) {
+        // Возвращаем баланс USDT контракта
+        address usdtToken = 0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6;
+        (bool success, bytes memory data) = usdtToken.staticcall(
+            abi.encodeWithSignature("balanceOf(address)", address(this))
+        );
+        
+        if (success && data.length >= 32) {
+            return abi.decode(data, (uint256));
+        }
+        return 0;
+    }
 }
