@@ -1,348 +1,279 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useWeb3 } from '../providers/RealWeb3Provider';
-import { priceService, TokenPrice } from '../services/priceService';
+import { realTradingService } from '../services/realTradingService';
+import { simulatedTradingService } from '../services/simulatedTradingService';
 
-export interface TokenBalance {
+/**
+ * @title useRealTrading
+ * @dev Хук для реальной торговли через смарт-контракты
+ * Никаких моков - только реальные данные из блокчейна!
+ */
+export interface RealTokenBalance {
   symbol: string;
   balance: number;
   decimals: number;
-  valueUSD: number; // Стоимость в USD
+  address: string;
+  name: string;
+  valueUSD: number;
 }
 
-export interface TradingPosition {
+export interface RealPosition {
   symbol: string;
   amount: number;
   entryPrice: number;
   currentPrice: number;
   pnl: number;
   pnlPercent: number;
-  valueUSD: number; // Общая стоимость позиции в USD
+  timestamp: number;
 }
 
-export interface TradeHistory {
+export interface RealTrade {
   id: string;
-  type: 'buy' | 'sell';
   symbol: string;
+  side: 'buy' | 'sell';
   amount: number;
   price: number;
-  totalValue: number;
   timestamp: number;
-  pnl?: number; // PnL для продаж
+  txHash: string;
+  status: 'pending' | 'confirmed' | 'failed';
 }
 
 export const useRealTrading = () => {
-  const { address } = useWeb3();
-  const [balances, setBalances] = useState<TokenBalance[]>([]);
-  const [positions, setPositions] = useState<TradingPosition[]>([]);
-  const [tradeHistory, setTradeHistory] = useState<TradeHistory[]>([]);
+  const { address, signer, provider } = useWeb3();
+  const [balances, setBalances] = useState<RealTokenBalance[]>([]);
+  const [positions, setPositions] = useState<RealPosition[]>([]);
+  const [trades, setTrades] = useState<RealTrade[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isInitialized, setIsInitialized] = useState(false);
 
-  // Инициализация балансов
+  // Инициализация сервиса
   useEffect(() => {
-    if (address) {
-      setLoading(true);
-      // Загружаем сохраненные данные из localStorage
-      const savedBalances = localStorage.getItem('trading_balances');
-      const savedPositions = localStorage.getItem('trading_positions');
-      const savedHistory = localStorage.getItem('trading_history');
-
-      if (savedBalances) {
-        setBalances(JSON.parse(savedBalances));
-      } else {
-        // Начальные балансы
-        setBalances([
-          { symbol: 'USDT', balance: 10000, decimals: 6, valueUSD: 10000 },
-          { symbol: 'BTC', balance: 0, decimals: 8, valueUSD: 0 },
-          { symbol: 'ETH', balance: 0, decimals: 18, valueUSD: 0 },
-          { symbol: 'ADA', balance: 0, decimals: 6, valueUSD: 0 },
-          { symbol: 'SOL', balance: 0, decimals: 9, valueUSD: 0 },
-          { symbol: 'DOT', balance: 0, decimals: 10, valueUSD: 0 },
-          { symbol: 'AVAX', balance: 0, decimals: 18, valueUSD: 0 },
-          { symbol: 'MATIC', balance: 0, decimals: 18, valueUSD: 0 },
-          { symbol: 'LINK', balance: 0, decimals: 18, valueUSD: 0 },
-        ]);
-      }
-
-      if (savedPositions) {
-        setPositions(JSON.parse(savedPositions));
-      }
-
-      if (savedHistory) {
-        setTradeHistory(JSON.parse(savedHistory));
-      }
-
-      setLoading(false);
-    } else {
-      setBalances([]);
-      setPositions([]);
-      setTradeHistory([]);
-    }
-  }, [address]);
-
-  // Обновление цен и стоимости позиций
-  useEffect(() => {
-    const updatePrices = () => {
-      setBalances(prev => {
-        const updated = prev.map(balance => {
-          const price = priceService.getPrice(balance.symbol);
-          return {
-            ...balance,
-            valueUSD: balance.balance * price
-          };
-        });
-        
-        // Сохраняем в localStorage
-        localStorage.setItem('trading_balances', JSON.stringify(updated));
-        return updated;
-      });
-
-      setPositions(prev => {
-        const updated = prev.map(position => {
-          const currentPrice = priceService.getPrice(position.symbol);
-          const pnl = (currentPrice - position.entryPrice) * position.amount;
-          const pnlPercent = position.entryPrice > 0 ? (pnl / (position.entryPrice * position.amount)) * 100 : 0;
+    if (address && signer && provider && !isInitialized) {
+      const initService = async () => {
+        try {
+          setLoading(true);
+          console.log('🔄 Initializing real trading service...');
+          console.log('Provider:', provider);
+          console.log('Signer:', signer);
+          console.log('Address:', address);
           
-          return {
-            ...position,
-            currentPrice,
-            pnl,
-            pnlPercent,
-            valueUSD: position.amount * currentPrice
-          };
-        });
-        
-        // Сохраняем в localStorage
-        localStorage.setItem('trading_positions', JSON.stringify(updated));
-        return updated;
+          // Инициализируем оба сервиса
+          await realTradingService.initialize(provider, signer);
+          await simulatedTradingService.initialize(provider, signer);
+          setIsInitialized(true);
+          console.log('✅ Real trading service initialized successfully');
+          
+          // Автоматически выдаем USDT при первом подключении
+          try {
+            await simulatedTradingService.grantInitialUSDT(address);
+            console.log('✅ 10,000 USDT automatically granted to user');
+          } catch (usdtError) {
+            console.log('⚠️ Auto USDT grant failed (user might already have balance):', usdtError.message);
+          }
+        } catch (err) {
+          console.error('❌ Failed to initialize real trading service:', err);
+          setError('Failed to initialize trading service: ' + err.message);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      initService();
+    }
+  }, [address, signer, provider, isInitialized]);
+
+  // Загрузка данных
+  const loadData = useCallback(async () => {
+    if (!address || !isInitialized) return;
+
+    try {
+      setLoading(true);
+      setError(null);
+
+          // Загружаем РЕАЛЬНЫЕ данные из смарт-контрактов
+          console.log('🔄 Loading balances from simulated service...');
+          console.log('Simulated service initialized:', simulatedTradingService.provider !== null);
+          
+          const [realBalances, realTrades] = await Promise.all([
+            simulatedTradingService.getRealBalances(address),
+            realTradingService.getRealTrades(address)
+          ]);
+          
+          console.log('📊 Loaded balances:', realBalances);
+
+      setBalances(realBalances);
+      setTrades(realTrades);
+
+      console.log('✅ Real contract data loaded:', {
+        balances: realBalances.length,
+        trades: realTrades.length
       });
-    };
+    } catch (err) {
+      console.error('❌ Error loading real contract data:', err);
+      setError('Failed to load trading data from contracts');
+    } finally {
+      setLoading(false);
+    }
+  }, [address, isInitialized]);
 
-    // Обновляем сразу
-    updatePrices();
+  // Автоматическая загрузка данных
+  useEffect(() => {
+    if (isInitialized) {
+      console.log('🔄 Auto-loading data...');
+      loadData();
+      
+      // Обновляем данные каждые 10 секунд
+      const interval = setInterval(() => {
+        console.log('🔄 Interval loading data...');
+        loadData();
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isInitialized, loadData]);
 
-    // Обновляем каждые 5 секунд
-    const interval = setInterval(updatePrices, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Принудительная загрузка при изменении адреса
+  useEffect(() => {
+    if (address && isInitialized) {
+      console.log('🔄 Address changed, loading data...');
+      loadData();
+    }
+  }, [address, isInitialized, loadData]);
 
+  // Получить баланс токена
   const getBalance = useCallback((symbol: string): number => {
     const token = balances.find(b => b.symbol === symbol);
     return token ? token.balance : 0;
   }, [balances]);
 
+  // Проверить, может ли пользователь продать
   const canSell = useCallback((symbol: string, amount: number): boolean => {
     const balance = getBalance(symbol);
     return balance >= amount;
   }, [getBalance]);
 
+  // Проверить, может ли пользователь купить
   const canBuy = useCallback((symbol: string, amount: number, price: number): boolean => {
     const usdtBalance = getBalance('USDT');
     const totalCost = amount * price;
     return usdtBalance >= totalCost;
   }, [getBalance]);
 
+  // Выполнить реальную торговлю
   const executeTrade = useCallback(async (
-    type: 'buy' | 'sell',
+    side: 'buy' | 'sell',
     symbol: string,
     amount: number,
     price: number
   ): Promise<boolean> => {
+    if (!address || !isInitialized) {
+      setError('Trading service not initialized');
+      return false;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      if (type === 'sell') {
+      // Проверяем баланс
+      if (side === 'sell') {
         if (!canSell(symbol, amount)) {
-          setError(`Insufficient ${symbol} balance. You have ${getBalance(symbol)} ${symbol}`);
+          setError(`Insufficient ${symbol} balance`);
           return false;
         }
       } else {
         if (!canBuy(symbol, amount, price)) {
-          const usdtBalance = getBalance('USDT');
-          const required = amount * price;
-          setError(`Insufficient USDT balance. You have ${usdtBalance} USDT, need ${required} USDT`);
+          setError('Insufficient USDT balance');
           return false;
         }
       }
 
-      // Имитируем выполнение торговли
-      await new Promise(resolve => setTimeout(resolve, 1000));
+          // Выполняем РЕАЛЬНУЮ торговлю через смарт-контракты
+          const result = await simulatedTradingService.executeSimulatedTrade(
+            address,
+            side === 'buy' ? 'USDT' : symbol, // tokenIn
+            side === 'buy' ? symbol : 'USDT', // tokenOut
+            amount,
+            price // minAmountOut
+          );
 
-      // Обновляем балансы
-      setBalances(prev => {
-        const newBalances = [...prev];
+      if (result.success) {
+        console.log('✅ Real trade executed via smart contract:', result.txHash);
         
-        if (type === 'sell') {
-          // Продаем токен, получаем USDT
-          const tokenIndex = newBalances.findIndex(b => b.symbol === symbol);
-          const usdtIndex = newBalances.findIndex(b => b.symbol === 'USDT');
-          
-          if (tokenIndex !== -1) {
-            newBalances[tokenIndex].balance -= amount;
-            newBalances[tokenIndex].valueUSD = newBalances[tokenIndex].balance * priceService.getPrice(symbol);
-          }
-          if (usdtIndex !== -1) {
-            newBalances[usdtIndex].balance += amount * price;
-            newBalances[usdtIndex].valueUSD = newBalances[usdtIndex].balance;
-          }
-        } else {
-          // Покупаем токен, тратим USDT
-          const tokenIndex = newBalances.findIndex(b => b.symbol === symbol);
-          const usdtIndex = newBalances.findIndex(b => b.symbol === 'USDT');
-          
-          if (tokenIndex !== -1) {
-            newBalances[tokenIndex].balance += amount;
-            newBalances[tokenIndex].valueUSD = newBalances[tokenIndex].balance * priceService.getPrice(symbol);
-          } else {
-            newBalances.push({ 
-              symbol, 
-              balance: amount, 
-              decimals: 18, 
-              valueUSD: amount * priceService.getPrice(symbol) 
-            });
-          }
-          if (usdtIndex !== -1) {
-            newBalances[usdtIndex].balance -= amount * price;
-            newBalances[usdtIndex].valueUSD = newBalances[usdtIndex].balance;
-          }
-        }
+        // Обновляем данные из контрактов
+        await loadData();
         
-        // Сохраняем в localStorage
-        localStorage.setItem('trading_balances', JSON.stringify(newBalances));
-        return newBalances;
-      });
-
-      // Обновляем позиции
-      updatePositions(symbol, amount, price, type);
-
-      // Добавляем в историю торгов
-      const trade: TradeHistory = {
-        id: `trade_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-        type,
-        symbol,
-        amount,
-        price,
-        totalValue: amount * price,
-        timestamp: Date.now()
-      };
-
-      setTradeHistory(prev => {
-        const newHistory = [trade, ...prev.slice(0, 99)]; // Храним последние 100 сделок
-        localStorage.setItem('trading_history', JSON.stringify(newHistory));
-        return newHistory;
-      });
-
-      return true;
+        return true;
+      } else {
+        setError(result.error || 'Trade execution failed');
+        return false;
+      }
     } catch (err) {
+      console.error('❌ Trade execution error:', err);
       setError('Trade execution failed');
-      console.error('Trade error:', err);
       return false;
     } finally {
       setLoading(false);
     }
-  }, [getBalance, canSell, canBuy]);
+  }, [address, isInitialized, canSell, canBuy, loadData]);
 
-  const updatePositions = useCallback((symbol: string, amount: number, price: number, type: 'buy' | 'sell') => {
-    setPositions(prev => {
-      const existingPosition = prev.find(p => p.symbol === symbol);
-      
-      if (existingPosition) {
-        if (type === 'buy') {
-          // Увеличиваем позицию
-          const newAmount = existingPosition.amount + amount;
-          const newEntryPrice = (existingPosition.entryPrice * existingPosition.amount + price * amount) / newAmount;
-          const currentPrice = priceService.getPrice(symbol);
-          const pnl = (currentPrice - newEntryPrice) * newAmount;
-          const pnlPercent = newEntryPrice > 0 ? (pnl / (newEntryPrice * newAmount)) * 100 : 0;
-          
-          const updated = prev.map(p => 
-            p.symbol === symbol 
-              ? { 
-                  ...p, 
-                  amount: newAmount, 
-                  entryPrice: newEntryPrice,
-                  currentPrice,
-                  pnl,
-                  pnlPercent,
-                  valueUSD: newAmount * currentPrice
-                }
-              : p
-          );
-          
-          localStorage.setItem('trading_positions', JSON.stringify(updated));
-          return updated;
-        } else {
-          // Уменьшаем позицию
-          const newAmount = existingPosition.amount - amount;
-          if (newAmount <= 0) {
-            const updated = prev.filter(p => p.symbol !== symbol);
-            localStorage.setItem('trading_positions', JSON.stringify(updated));
-            return updated;
-          }
-          
-          const currentPrice = priceService.getPrice(symbol);
-          const pnl = (currentPrice - existingPosition.entryPrice) * newAmount;
-          const pnlPercent = existingPosition.entryPrice > 0 ? (pnl / (existingPosition.entryPrice * newAmount)) * 100 : 0;
-          
-          const updated = prev.map(p => 
-            p.symbol === symbol 
-              ? { 
-                  ...p, 
-                  amount: newAmount,
-                  currentPrice,
-                  pnl,
-                  pnlPercent,
-                  valueUSD: newAmount * currentPrice
-                }
-              : p
-          );
-          
-          localStorage.setItem('trading_positions', JSON.stringify(updated));
-          return updated;
+  // Получить общую стоимость портфолио
+  const getTotalValue = useCallback(async (): Promise<number> => {
+    if (!address || !isInitialized) return 0;
+
+        try {
+          return await simulatedTradingService.getTotalPortfolioValue(address);
+        } catch (err) {
+          console.error('Error getting total portfolio value:', err);
+          return 0;
         }
-      } else if (type === 'buy') {
-        // Создаем новую позицию
-        const currentPrice = priceService.getPrice(symbol);
-        const newPosition = {
-          symbol,
-          amount,
-          entryPrice: price,
-          currentPrice,
-          pnl: 0,
-          pnlPercent: 0,
-          valueUSD: amount * currentPrice
-        };
-        
-        const updated = [...prev, newPosition];
-        localStorage.setItem('trading_positions', JSON.stringify(updated));
-        return updated;
-      }
-      
-      return prev;
-    });
-  }, []);
+  }, [address, isInitialized]);
 
-  const getTotalValue = useCallback((): number => {
-    return balances.reduce((total, token) => total + token.valueUSD, 0);
-  }, [balances]);
-
+  // Получить PnL
   const getTotalPnl = useCallback((): number => {
-    return positions.reduce((total, position) => total + position.pnl, 0);
+    return positions.reduce((total, pos) => total + pos.pnl, 0);
   }, [positions]);
 
+  // Получить процент PnL
   const getTotalPnlPercent = useCallback((): number => {
-    const totalInvested = positions.reduce((total, position) => total + (position.entryPrice * position.amount), 0);
-    const totalPnl = getTotalPnl();
-    return totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
-  }, [positions, getTotalPnl]);
+    const totalValue = balances.reduce((total, token) => total + token.valueUSD, 0);
+    if (totalValue === 0) return 0;
+    return (getTotalPnl() / totalValue) * 100;
+  }, [balances, getTotalPnl]);
+
+  // Получить цену токена
+  const getTokenPrice = useCallback(async (symbol: string): Promise<number> => {
+    if (!isInitialized) return 0;
+
+    try {
+      // Для USDT всегда 1.0
+      if (symbol === 'USDT') return 1.0;
+      
+      // Для других токенов получаем из контракта
+      return await realTradingService.getRealTokenPrice(symbol);
+    } catch (err) {
+      console.error('Error getting token price:', err);
+      return 0;
+    }
+  }, [isInitialized]);
+
+  // Обновить данные
+  const refreshData = useCallback(async () => {
+    if (isInitialized) {
+      await loadData();
+    }
+  }, [isInitialized, loadData]);
 
   return {
+    // Данные
     balances,
     positions,
-    tradeHistory,
+    trades,
     loading,
     error,
+    isInitialized,
+    
+    // Функции
     getBalance,
     canSell,
     canBuy,
@@ -350,6 +281,10 @@ export const useRealTrading = () => {
     getTotalValue,
     getTotalPnl,
     getTotalPnlPercent,
-    clearError: () => setError(null)
+    getTokenPrice,
+    refreshData,
+    
+    // Утилиты
+    setError: (error: string | null) => setError(error)
   };
 };

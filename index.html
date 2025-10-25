@@ -5,6 +5,17 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TradeShield Frontend Design</title>
+    <script>
+      if (typeof global === 'undefined') {
+        var global = globalThis;
+      }
+      
+      // Полифилл для Buffer
+      if (typeof Buffer === 'undefined') {
+        window.Buffer = window.Buffer || {};
+        global.Buffer = global.Buffer || {};
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

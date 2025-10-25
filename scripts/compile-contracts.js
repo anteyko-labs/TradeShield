@@ -1,84 +1,96 @@
-// Compile contracts using solc
 const solc = require('solc');
 const fs = require('fs');
 const path = require('path');
 
-function compileContracts() {
+// Список контрактов для компиляции
+const contracts = [
+  'ProxyRegistry.sol',
+  'RealUSDT.sol', 
+  'RealUserWallet.sol',
+  'RealDEX.sol'
+];
+
+async function compileContracts() {
   console.log('🔨 Compiling contracts...');
   
-  const contractsDir = path.join(__dirname, '..', 'contracts');
-  const contracts = [
-    'TokenRegistry.sol',
-    'UniversalDEX.sol', 
-    'UserWallet.sol',
-    'UniversalToken.sol'
-  ];
-  
   const sources = {};
+  const contractsDir = path.join(__dirname, '../contracts');
   
-  // Read contract files
-  contracts.forEach(contract => {
-    const contractPath = path.join(contractsDir, contract);
+  // Читаем все контракты
+  for (const contractName of contracts) {
+    const contractPath = path.join(contractsDir, contractName);
     if (fs.existsSync(contractPath)) {
-      sources[contract] = {
+      sources[contractName] = {
         content: fs.readFileSync(contractPath, 'utf8')
       };
-      console.log(`✅ Read ${contract}`);
+      console.log(`✅ Loaded ${contractName}`);
     } else {
-      console.log(`❌ Contract not found: ${contract}`);
+      console.log(`❌ Contract not found: ${contractName}`);
     }
-  });
+  }
   
-  // Compile contracts
+  // Настройки компилятора
   const input = {
     language: 'Solidity',
     sources: sources,
     settings: {
       outputSelection: {
         '*': {
-          '*': ['*']
+          '*': ['abi', 'evm.bytecode']
         }
       }
     }
   };
   
-  const output = JSON.parse(solc.compile(JSON.stringify(input)));
-  
-  if (output.errors) {
-    console.log('❌ Compilation errors:');
-    output.errors.forEach(error => {
-      console.log(error.message);
-    });
-    return null;
-  }
-  
-  console.log('✅ Contracts compiled successfully!');
-  
-  // Save compiled contracts
-  const compiledDir = path.join(__dirname, '..', 'compiled');
-  if (!fs.existsSync(compiledDir)) {
-    fs.mkdirSync(compiledDir);
-  }
-  
-  Object.keys(output.contracts).forEach(contractName => {
-    const contract = output.contracts[contractName];
-    Object.keys(contract).forEach(contractKey => {
-      const contractData = contract[contractKey];
-      const filename = `${contractKey}.json`;
-      const filepath = path.join(compiledDir, filename);
+  try {
+    // Компилируем
+    const output = JSON.parse(solc.compile(JSON.stringify(input)));
+    
+    if (output.errors) {
+      console.log('❌ Compilation errors:');
+      output.errors.forEach(error => {
+        console.log(`  ${error.message}`);
+      });
+      return false;
+    }
+    
+    // Создаем папку artifacts если не существует
+    const artifactsDir = path.join(__dirname, '../artifacts');
+    if (!fs.existsSync(artifactsDir)) {
+      fs.mkdirSync(artifactsDir, { recursive: true });
+    }
+    
+    // Сохраняем артефакты
+    for (const contractName of contracts) {
+      const contractPath = contractName.replace('.sol', '');
+      const contractDir = path.join(artifactsDir, `contracts/${contractPath}.sol`);
       
-      fs.writeFileSync(filepath, JSON.stringify(contractData, null, 2));
-      console.log(`✅ Saved ${filename}`);
-    });
-  });
-  
-  return output.contracts;
+      if (!fs.existsSync(contractDir)) {
+        fs.mkdirSync(contractDir, { recursive: true });
+      }
+      
+      const contractOutput = output.contracts[contractName];
+      if (contractOutput) {
+        for (const contract in contractOutput) {
+          const artifact = {
+            abi: contractOutput[contract].abi,
+            bytecode: contractOutput[contract].evm.bytecode.object
+          };
+          
+          const artifactPath = path.join(contractDir, `${contract}.json`);
+          fs.writeFileSync(artifactPath, JSON.stringify(artifact, null, 2));
+          console.log(`✅ Compiled ${contractName}:${contract}`);
+        }
+      }
+    }
+    
+    console.log('🎉 All contracts compiled successfully!');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Compilation failed:', error);
+    return false;
+  }
 }
 
-const compiled = compileContracts();
-if (compiled) {
-  console.log('\n🎉 All contracts compiled successfully!');
-  console.log('Compiled contracts saved to ./compiled/ directory');
-} else {
-  console.log('\n❌ Compilation failed');
-}
+compileContracts();

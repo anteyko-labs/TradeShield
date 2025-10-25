@@ -100,7 +100,7 @@ export const RealTokenManagement: React.FC = () => {
             <span className="text-sm">Total Trades</span>
           </div>
           <div className="text-3xl font-bold font-mono text-orange-warning">
-            {tradeHistory.length}
+            {tradeHistory?.length || 0}
           </div>
           <div className="text-sm text-text-secondary mt-2">
             {tradeHistory.filter(t => t.type === 'buy').length} buys, {tradeHistory.filter(t => t.type === 'sell').length} sells

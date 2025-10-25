@@ -45,9 +45,9 @@ export const useContractTrading = () => {
 
   // Конфигурация контрактов (РЕАЛЬНЫЕ АДРЕСА С SEPOLIA)
   const contractConfig: ContractConfig = {
-    tokenRegistryAddress: '0x0C4d6A274e052a3F727225B77466E02514F9E6B1',
-    dexAddress: '0x888F6Fd191776f7671D6B371d13d755760fb820F',
-    rpcUrl: 'https://sepolia.infura.io/v3/YOUR_KEY',
+    tokenRegistryAddress: '0x0557CF561B428bCf9cDD8b49044E330Ae8BBDa34',
+    dexAddress: '0xCcA67eB690872566C1260F4777BfE7C79ff4047d',
+    rpcUrl: 'https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161',
     chainId: 11155111 // Sepolia
   };
 

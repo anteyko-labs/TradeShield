@@ -1,11 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Wallet, Star } from 'lucide-react';
 import { Button } from './Button';
-import { useWeb3 } from '../providers/RealWeb3Provider';
+import { useDirectWeb3 } from '../hooks/useDirectWeb3';
 import { useRealData } from '../hooks/useRealData';
 import { CleanTradingViewWidget } from './CleanTradingViewWidget';
 import { tradingService } from '../services/tradingService';
 import { useRealTrading } from '../hooks/useRealTrading';
+import { useSimpleBalance } from '../hooks/useSimpleBalance';
+import { useRealExchange } from '../hooks/useRealExchange';
+import { SimpleBalanceTest } from './SimpleBalanceTest';
+import { realTradingService } from '../services/realTradingService';
+import { simpleMintService } from '../services/simpleMintService';
+import { simpleTradingService } from '../services/simpleTradingService';
+import { realTradingSystem } from '../services/realTradingSystem';
+import { realTradingEngine } from '../services/realTradingEngine';
+import { realTradingSystemV2 } from '../services/realTradingSystemV2';
+import { TradingLogs } from './TradingLogs';
+import { BotBalances } from './BotBalances';
+import { ethers } from 'ethers';
 
 interface TradingPair {
   id: string;
@@ -24,7 +36,7 @@ interface OrderBookEntry {
 }
 
 export const ProfessionalTradingInterface: React.FC = () => {
-  const { address } = useWeb3();
+  const { address, provider, signer, connect } = useDirectWeb3();
   const { tradingPairs } = useRealData();
   const { 
     balances,
@@ -32,8 +44,36 @@ export const ProfessionalTradingInterface: React.FC = () => {
     executeTrade,
     getTotalValue,
     getTotalPnl,
-    getTotalPnlPercent
+    getTotalPnlPercent,
+    loading
   } = useRealTrading();
+
+  // Простой сервис для балансов
+  const {
+    balances: simpleBalances,
+    totalValue: simpleTotalValue,
+    loading: balanceLoading,
+    loadBalances
+  } = useSimpleBalance();
+
+  // Реальные курсы обмена
+  const {
+    exchangeRates,
+    loading: exchangeLoading,
+    executeExchange,
+    getExchangeRate
+  } = useRealExchange();
+
+  // Инициализируем сервисы
+  useEffect(() => {
+    if (provider && signer) {
+      simpleMintService.initialize(provider, signer);
+      simpleTradingService.initialize(provider, signer);
+      realTradingSystem.initialize(provider, signer);
+      realTradingEngine.initialize(provider, signer);
+      realTradingSystemV2.initialize();
+    }
+  }, [provider, signer]);
   
   // State for trading
   const [selectedPair] = useState<TradingPair | null>(null);
@@ -42,6 +82,8 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const [amount, setAmount] = useState('');
   const [price, setPrice] = useState('');
   const [showPortfolio, setShowPortfolio] = useState(false);
+  const [activeTab, setActiveTab] = useState<'trading' | 'logs' | 'bots'>('trading');
+  const [totalValue, setTotalValue] = useState(0);
   
   // Mock order book data
   const [orderBook, setOrderBook] = useState<{
@@ -79,27 +121,40 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const displayPairs = tradingPairs.length > 0 ? tradingPairs : mockPairs;
   const currentPair = selectedPair || displayPairs[0];
 
+  // Load total value
+  useEffect(() => {
+    const loadTotalValue = async () => {
+      if (getTotalValue) {
+        try {
+          const value = await getTotalValue();
+          setTotalValue(value);
+        } catch (error) {
+          console.error('Error loading total value:', error);
+        }
+      }
+    };
+
+    loadTotalValue();
+  }, [getTotalValue]);
+
   // Update order book and prices every 500ms for fast updates
   useEffect(() => {
     const updateOrderBook = () => {
-      const newOrderBook = tradingService.getOrderBook(currentPair?.id || 'BTC/USDT', currentPair?.price || 0);
-      setOrderBook(newOrderBook);
-      
-      // Update prices for trading engine
-      // if (currentPair) {
-      //   updatePrices({
-      //     [currentPair.id]: currentPair.price
-      //   });
-      // }
+      try {
+        const realOrderBook = realTradingSystemV2.getTopOrders(currentPair?.id || 'BTC/USDT');
+        setOrderBook(realOrderBook);
+      } catch (error) {
+        console.log('Order book update failed:', error);
+      }
     };
 
     updateOrderBook();
-    const interval = setInterval(updateOrderBook, 500);
+    const interval = setInterval(updateOrderBook, 2000); // Увеличиваем интервал
 
     return () => clearInterval(interval);
-  }, [currentPair]);
+  }, [currentPair?.id]); // Только при изменении пары
 
-  // Real trading functions
+  // Real trading functions with real exchange rates
   const handleTrade = async () => {
     if (!address) {
       alert('Please connect your wallet first');
@@ -118,30 +173,41 @@ export const ProfessionalTradingInterface: React.FC = () => {
 
     try {
       const tokenSymbol = currentPair?.id?.split('/')[0] || 'BTC';
-      const tradePrice = orderType === 'limit' ? parseFloat(price) : currentPair?.price || 0;
+      const tradePrice = orderType === 'limit' ? parseFloat(price) : currentPair?.price || 110000;
       
-      const success = await executeTrade(
+      // Используем реальную торговую систему
+      const result = await realTradingSystem.placeOrder(
+        address,
         side,
         tokenSymbol,
         parseFloat(amount),
         tradePrice
       );
 
-      if (success) {
-        alert(`Trade executed successfully: ${side.toUpperCase()} ${amount} ${tokenSymbol}`);
+      if (result.success) {
+        alert(`✅ ${side.toUpperCase()} ${amount} ${tokenSymbol} order placed successfully!`);
+        console.log('📊 Trade ID:', result.tradeId);
+        
+        // Обновляем балансы
+        await loadBalances();
+        
         // Reset form
         setAmount('');
         setPrice('');
       } else {
-        alert(`Trade failed: Unknown error`);
+        alert(`❌ Order failed: ${result.error}`);
       }
+      
     } catch (error) {
-      console.error('Trade execution failed:', error);
-      alert('Trade execution failed. Please try again.');
+      console.error('Order placement failed:', error);
+      alert('Order placement failed. Please try again.');
     }
   };
 
   const formatPrice = (price: number) => {
+    if (typeof price !== 'number' || isNaN(price)) {
+      return '0.000';
+    }
     return price.toLocaleString('en-US', { 
       minimumFractionDigits: 3, 
       maximumFractionDigits: 3 
@@ -149,6 +215,9 @@ export const ProfessionalTradingInterface: React.FC = () => {
   };
 
   const formatSize = (size: number) => {
+    if (typeof size !== 'number' || isNaN(size)) {
+      return '0.00';
+    }
     return size.toLocaleString('en-US', { 
       minimumFractionDigits: 2, 
       maximumFractionDigits: 2 
@@ -156,6 +225,9 @@ export const ProfessionalTradingInterface: React.FC = () => {
   };
 
   const formatTotal = (total: number) => {
+    if (typeof total !== 'number' || isNaN(total)) {
+      return '0.00';
+    }
     return total.toLocaleString('en-US', { 
       minimumFractionDigits: 2, 
       maximumFractionDigits: 2 
@@ -181,13 +253,20 @@ export const ProfessionalTradingInterface: React.FC = () => {
               <span className="text-sm text-gray-400">Spot</span>
             </div>
             
-            <div className="flex items-center space-x-6">
-            <div className="flex items-center space-x-3">
-              <div className="text-2xl font-bold">{formatPrice(currentPair?.price || 110203)}</div>
-              <div className={`text-sm font-semibold ${currentPair?.change && currentPair.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
-                {currentPair?.change && currentPair.change >= 0 ? '+' : ''}{currentPair?.change?.toFixed(2)}%
-              </div>
-            </div>
+                 <div className="flex items-center space-x-6">
+                 <div className="flex items-center space-x-3">
+                   <div className="text-2xl font-bold">
+                     {exchangeRates.BTC ? formatPrice(exchangeRates.BTC) : formatPrice(currentPair?.price || 110203)}
+                   </div>
+                   <div className={`text-sm font-semibold ${currentPair?.change && currentPair.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                     {currentPair?.change && currentPair.change >= 0 ? '+' : ''}{currentPair?.change?.toFixed(2)}%
+                   </div>
+                   {exchangeRates.BTC && (
+                     <div className="text-xs text-blue-400">
+                       Real Rate: ${exchangeRates.BTC.toLocaleString()}
+                     </div>
+                   )}
+                 </div>
               
               <div className="text-sm text-gray-400">
                 <div>24h Volume: ${formatVolume(Number(currentPair?.volume) || 25000000000)}</div>
@@ -197,16 +276,30 @@ export const ProfessionalTradingInterface: React.FC = () => {
           </div>
           
           <div className="flex items-center space-x-4">
-            <div className="text-sm text-gray-400">
-              Trading Balance: ${getTotalValue().toFixed(2)}
-            </div>
+                 <div className="text-sm text-gray-400">
+                   Trading Balance: ${simpleTotalValue.toFixed(2)}
+                 </div>
+                 <div className="text-xs text-blue-400">
+                   🤖 Bots: {realTradingSystemV2.getSystemStats().totalBots} | 
+                   📊 Orders: {realTradingSystemV2.getSystemStats().activeOrders} |
+                   💰 Fees: ${realTradingSystemV2.getSystemStats().totalFees.toFixed(2)}
+                 </div>
             <button
               onClick={() => setShowPortfolio(!showPortfolio)}
               className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm"
             >
               {showPortfolio ? 'Hide' : 'Portfolio'}
             </button>
-            <Button variant="secondary" size="small">
+            <button
+              onClick={() => {
+                console.log('🔄 Manual refresh triggered');
+                loadBalances();
+              }}
+              className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-sm"
+            >
+              Refresh
+            </button>
+            <Button variant="secondary" size="small" onClick={connect}>
               <Wallet className="w-4 h-4 mr-2" />
               {address ? `${address.slice(0, 6)}...${address.slice(-4)}` : 'Connect'}
             </Button>
@@ -219,35 +312,46 @@ export const ProfessionalTradingInterface: React.FC = () => {
         <div className="bg-gray-800 border-b border-gray-700 p-4">
           <div className="text-white">
             <h3 className="text-lg font-semibold mb-4">Portfolio</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <h4 className="text-sm text-gray-400 mb-2">Balances</h4>
-                {balances.map((balance, index) => (
-                  <div key={index} className="flex justify-between text-sm">
-                    <span>{balance.symbol}:</span>
-                    <span>{balance.balance.toFixed(6)}</span>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <h4 className="text-sm text-gray-400 mb-2">Positions</h4>
-                {positions.length > 0 ? (
-                  positions.map((position, index) => (
-                    <div key={index} className="flex justify-between text-sm">
-                      <span>{position.symbol}:</span>
-                      <span>{position.amount.toFixed(6)}</span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-gray-500 text-sm">No positions</div>
-                )}
-              </div>
-            </div>
+            
+            {/* Simple Balance Test Component */}
+            <SimpleBalanceTest />
+                 <div className="grid grid-cols-2 gap-4">
+                   <div>
+                     <h4 className="text-sm text-gray-400 mb-2">Balances</h4>
+                     {simpleBalances.length > 0 ? (
+                       simpleBalances.map((balance, index) => (
+                         <div key={index} className="flex justify-between text-sm">
+                           <span>{balance.symbol}:</span>
+                           <span>{balance.balance.toFixed(6)}</span>
+                         </div>
+                       ))
+                     ) : (
+                       <div className="text-gray-500 text-sm">
+                         Loading balances... (Count: {simpleBalances.length})
+                         <br />
+                         Debug: {JSON.stringify(simpleBalances)}
+                       </div>
+                     )}
+                   </div>
+                   <div>
+                     <h4 className="text-sm text-gray-400 mb-2">Positions</h4>
+                     {positions.length > 0 ? (
+                       positions.map((position, index) => (
+                         <div key={index} className="flex justify-between text-sm">
+                           <span>{position.symbol}:</span>
+                           <span>{position.amount.toFixed(6)}</span>
+                         </div>
+                       ))
+                     ) : (
+                       <div className="text-gray-500 text-sm">No positions</div>
+                     )}
+                   </div>
+                 </div>
             <div className="mt-4 pt-4 border-t border-gray-700">
-              <div className="flex justify-between text-sm mb-2">
-                <span>Total Value:</span>
-                <span className="font-semibold">${getTotalValue().toFixed(2)}</span>
-              </div>
+                 <div className="flex justify-between text-sm mb-2">
+                   <span>Total Value:</span>
+                   <span className="font-semibold">${simpleTotalValue.toFixed(2)}</span>
+                 </div>
               <div className="flex justify-between text-sm">
                 <span>Total PnL:</span>
                 <span className={`font-semibold ${getTotalPnl() >= 0 ? 'text-green-400' : 'text-red-400'}`}>
@@ -259,8 +363,45 @@ export const ProfessionalTradingInterface: React.FC = () => {
         </div>
       )}
 
-      {/* Main Trading Interface - Full Width Layout */}
-      <div className="flex-1 flex">
+           {/* Tabs */}
+           <div className="bg-gray-800 border-b border-gray-700 px-6 py-2">
+             <div className="flex space-x-4">
+               <button
+                 onClick={() => setActiveTab('trading')}
+                 className={`px-4 py-2 rounded text-sm font-medium ${
+                   activeTab === 'trading'
+                     ? 'bg-blue-600 text-white'
+                     : 'text-gray-400 hover:text-white'
+                 }`}
+               >
+                 Trading
+               </button>
+               <button
+                 onClick={() => setActiveTab('logs')}
+                 className={`px-4 py-2 rounded text-sm font-medium ${
+                   activeTab === 'logs'
+                     ? 'bg-blue-600 text-white'
+                     : 'text-gray-400 hover:text-white'
+                 }`}
+               >
+                 Logs
+               </button>
+               <button
+                 onClick={() => setActiveTab('bots')}
+                 className={`px-4 py-2 rounded text-sm font-medium ${
+                   activeTab === 'bots'
+                     ? 'bg-blue-600 text-white'
+                     : 'text-gray-400 hover:text-white'
+                 }`}
+               >
+                 Bots
+               </button>
+             </div>
+           </div>
+
+           {/* Main Content */}
+           {activeTab === 'trading' ? (
+             <div className="flex-1 flex">
         {/* Main Chart Area - Left Column - Only TradingView */}
         <div className="flex-1 flex flex-col">
           {/* Chart - Full Height - Only TradingView */}
@@ -294,18 +435,22 @@ export const ProfessionalTradingInterface: React.FC = () => {
             </div>
             
             {/* Sell Orders */}
-            {orderBook.asks.map((ask, index) => (
+            {orderBook.asks && orderBook.asks.length > 0 ? orderBook.asks.map((ask, index) => (
               <div key={index} className="grid grid-cols-3 gap-2 text-xs hover:bg-gray-700 cursor-pointer py-1 px-1 rounded relative">
                 {/* Red background gradient for sell orders */}
                 <div 
                   className="absolute inset-0 bg-red-500 opacity-5 rounded"
-                  style={{ width: `${(ask.total / 30) * 100}%` }}
+                  style={{ width: `${((ask.total || 0) / 30) * 100}%` }}
                 />
-                <span className="text-right text-red-400 font-mono relative z-10">{formatPrice(ask.price)}</span>
-                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(ask.size)}</span>
-                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(ask.total)}</span>
+                <span className="text-right text-red-400 font-mono relative z-10">{formatPrice(ask.price || 0)}</span>
+                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(ask.size || 0)}</span>
+                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(ask.total || 0)}</span>
               </div>
-            ))}
+            )) : (
+              <div className="text-center text-gray-500 text-xs py-4">
+                No sell orders available
+              </div>
+            )}
             
             {/* Spread */}
             <div className="text-center py-1 text-xs text-gray-400 border-t border-b border-gray-700">
@@ -317,18 +462,22 @@ export const ProfessionalTradingInterface: React.FC = () => {
             </div>
             
             {/* Buy Orders */}
-            {orderBook.bids.map((bid, index) => (
+            {orderBook.bids && orderBook.bids.length > 0 ? orderBook.bids.map((bid, index) => (
               <div key={index} className="grid grid-cols-3 gap-2 text-xs hover:bg-gray-700 cursor-pointer py-1 px-1 rounded relative">
                 {/* Green background gradient for buy orders */}
                 <div 
                   className="absolute inset-0 bg-green-500 opacity-5 rounded"
-                  style={{ width: `${(bid.total / 30) * 100}%` }}
+                  style={{ width: `${((bid.total || 0) / 30) * 100}%` }}
                 />
-                <span className="text-right text-green-400 font-mono relative z-10">{formatPrice(bid.price)}</span>
-                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(bid.size)}</span>
-                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(bid.total)}</span>
+                <span className="text-right text-green-400 font-mono relative z-10">{formatPrice(bid.price || 0)}</span>
+                <span className="text-right text-gray-300 font-mono relative z-10">{formatSize(bid.size || 0)}</span>
+                <span className="text-right text-gray-400 font-mono relative z-10">{formatTotal(bid.total || 0)}</span>
               </div>
-            ))}
+            )) : (
+              <div className="text-center text-gray-500 text-xs py-4">
+                No buy orders available
+              </div>
+            )}
           </div>
         </div>
 
@@ -454,6 +603,19 @@ export const ProfessionalTradingInterface: React.FC = () => {
 
           {/* Bottom Section - Execute Button Fixed at Bottom */}
           <div className="p-3 border-t border-gray-700 flex-shrink-0" style={{ paddingBottom: 'calc(0.75rem + 5px)' }}>
+            {/* Exchange Rates Info */}
+            {exchangeRates.BTC && (
+              <div className="bg-green-600/20 border border-green-600/50 rounded p-2 mb-3">
+                <div className="text-xs text-green-300 mb-1">
+                  💱 Real Rates:
+                </div>
+                <div className="text-xs space-y-1">
+                  <div>BTC: ${exchangeRates.BTC.toLocaleString()}</div>
+                  <div>ETH: ${exchangeRates.ETH.toLocaleString()}</div>
+                </div>
+              </div>
+            )}
+
             {/* Execute Trade Button - Main Button at Bottom */}
             <button
               onClick={handleTrade}
@@ -466,6 +628,28 @@ export const ProfessionalTradingInterface: React.FC = () => {
               {side === 'buy' ? 'Buy' : 'Sell'} BTC/USDT
             </button>
 
+            {/* Get 10K USDT Button */}
+            {address && (
+              <button 
+                onClick={async () => {
+                  try {
+                    const result = await simpleTradingService.mintUSDT(address, 10000);
+                    if (result.success) {
+                      alert('✅ 10,000 USDT added to your wallet!');
+                      await loadBalances();
+                    } else {
+                      alert(`❌ Failed: ${result.error}`);
+                    }
+                  } catch (error) {
+                    alert('❌ Error getting USDT');
+                  }
+                }}
+                className="w-full py-2 bg-green-600 hover:bg-green-700 rounded font-semibold text-sm mb-2"
+              >
+                Get 10K USDT
+              </button>
+            )}
+
             {/* Connect Wallet Button */}
             {!address && (
               <button className="w-full py-2 bg-blue-600 hover:bg-blue-700 rounded font-semibold text-sm">
@@ -473,10 +657,19 @@ export const ProfessionalTradingInterface: React.FC = () => {
               </button>
             )}
           </div>
-        </div>
-      </div>
+           </div>
+         </div>
+           ) : activeTab === 'logs' ? (
+             <div className="flex-1">
+               <TradingLogs logs={realTradingSystemV2.getTradeLogs()} />
+             </div>
+           ) : (
+             <div className="flex-1">
+               <BotBalances balances={realTradingSystemV2.getBotBalances()} />
+             </div>
+           )}
 
-      {/* Footer */}
+           {/* Footer */}
       <div className="bg-gray-800 border-t border-gray-700 px-6 py-2 flex items-center justify-between text-sm text-gray-400">
         <div className="flex items-center space-x-4">
           <span className="flex items-center">
