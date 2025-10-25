@@ -181,7 +181,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
             <div className="flex items-center space-x-6">
             <div className="flex items-center space-x-3">
               <div className="text-2xl font-bold">{formatPrice(currentPair?.price || 110203)}</div>
-              <div className={`text-sm font-semibold ${currentPair?.change && currentPair.change >= 0 ? 'text-blue-400' : 'text-red-400'}`}>
+              <div className={`text-sm font-semibold ${currentPair?.change && currentPair.change >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {currentPair?.change && currentPair.change >= 0 ? '+' : ''}{currentPair?.change?.toFixed(2)}%
               </div>
             </div>

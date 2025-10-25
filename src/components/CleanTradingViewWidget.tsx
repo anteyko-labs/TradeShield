@@ -36,12 +36,14 @@ export const CleanTradingViewWidget: React.FC<CleanTradingViewWidgetProps> = ({
       try {
         setIsLoading(true);
         setError(null);
-
-        await loadTradingViewScript();
-
+        
+        // Wait for container to be available
         if (!containerRef.current) {
-          throw new Error('Container not found');
+          setTimeout(createWidget, 100);
+          return;
         }
+        
+        await loadTradingViewScript();
 
         const config = {
           width: '100%',

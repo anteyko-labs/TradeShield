@@ -4,6 +4,7 @@ import { Card } from './Card';
 import { Button } from './Button';
 import { PriceDisplay } from './PriceDisplay';
 import { useRealData } from '../hooks/useRealData';
+import { useTrading } from '../hooks/useTrading';
 import { TradingViewWidget } from './TradingViewWidget';
 import { AdvancedTradingViewWidget } from './AdvancedTradingViewWidget';
 import { SimpleTradingViewWidget } from './SimpleTradingViewWidget';
@@ -26,6 +27,18 @@ export const TradingInterface: React.FC = () => {
 
   // Use real data from our service
   const { tradingPairs: pairs, loading, error } = useRealData();
+  
+  // Use trading hook for balance management
+  const { 
+    balances, 
+    getBalance, 
+    canSell, 
+    canBuy, 
+    executeTrade, 
+    loading: tradingLoading, 
+    error: tradingError,
+    clearError 
+  } = useTrading();
 
   // Real data fallback with current prices (updated with real Bitcoin price)
   const mockPairs: TradingPair[] = [
@@ -46,6 +59,49 @@ export const TradingInterface: React.FC = () => {
   // Real-time updates are handled by useRealData hook
 
   const selectedPairData = displayPairs.find(p => p.id === selectedPair);
+  
+  // Get current token from selected pair
+  const currentToken = selectedPair.split('/')[0];
+  const currentTokenBalance = getBalance(currentToken);
+  const usdtBalance = getBalance('USDT');
+  
+  // Handle trade execution
+  const handleTrade = async () => {
+    if (!amount || !price) return;
+    
+    const amountNum = parseFloat(amount);
+    const priceNum = parseFloat(price);
+    
+    if (isNaN(amountNum) || isNaN(priceNum) || amountNum <= 0 || priceNum <= 0) {
+      return;
+    }
+    
+    const success = await executeTrade(orderType, currentToken, amountNum, priceNum);
+    
+    if (success) {
+      // Clear form
+      setAmount('');
+      setPrice('');
+    }
+  };
+  
+  // Check if trade is possible
+  const canExecuteTrade = () => {
+    if (!amount || !price) return false;
+    
+    const amountNum = parseFloat(amount);
+    const priceNum = parseFloat(price);
+    
+    if (isNaN(amountNum) || isNaN(priceNum) || amountNum <= 0 || priceNum <= 0) {
+      return false;
+    }
+    
+    if (orderType === 'sell') {
+      return canSell(currentToken, amountNum);
+    } else {
+      return canBuy(currentToken, amountNum, priceNum);
+    }
+  };
 
   return (
     <div className="grid grid-cols-12 gap-6">
@@ -211,9 +267,42 @@ export const TradingInterface: React.FC = () => {
               variant={orderType === 'buy' ? 'primary' : 'danger'}
               size="medium"
               className="w-full"
+              onClick={handleTrade}
+              disabled={!canExecuteTrade() || tradingLoading}
             >
-              {orderType === 'buy' ? 'Buy' : 'Sell'} {selectedPair.split('/')[0]}
+              {tradingLoading ? 'Processing...' : `${orderType === 'buy' ? 'Buy' : 'Sell'} ${selectedPair.split('/')[0]}`}
             </Button>
+            
+            {/* Error display */}
+            {tradingError && (
+              <div className="bg-red-loss/10 border border-red-loss/30 rounded-lg p-3 mt-3">
+                <div className="flex items-center gap-2 text-sm text-red-loss">
+                  <span>⚠️</span>
+                  <span>{tradingError}</span>
+                  <button 
+                    onClick={clearError}
+                    className="ml-auto text-xs underline hover:no-underline"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+            
+            {/* Balance display */}
+            <div className="bg-medium-gray rounded-lg p-3 mt-3">
+              <div className="text-xs text-text-muted mb-2">Your Balances:</div>
+              <div className="space-y-1">
+                <div className="flex justify-between text-sm">
+                  <span>USDT:</span>
+                  <span className="font-mono">{usdtBalance.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>{currentToken}:</span>
+                  <span className="font-mono">{currentTokenBalance.toFixed(6)}</span>
+                </div>
+              </div>
+            </div>
 
             <div className="bg-blue-primary/10 border border-blue-primary/30 rounded-lg p-3">
               <div className="flex items-center gap-2 text-sm text-blue-light">

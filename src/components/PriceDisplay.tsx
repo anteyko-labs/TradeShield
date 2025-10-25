@@ -2,9 +2,8 @@ import React from 'react';
 import { TrendingUp, TrendingDown } from 'lucide-react';
 
 interface PriceDisplayProps {
-  price: number;
+  price: string;
   change: number;
-  changePercent: number;
   volume?: string;
   high24h?: number;
   low24h?: number;
@@ -12,9 +11,8 @@ interface PriceDisplayProps {
 }
 
 export const PriceDisplay: React.FC<PriceDisplayProps> = ({
-  price = 0,
+  price = '0',
   change = 0,
-  changePercent = 0,
   volume,
   high24h,
   low24h,
@@ -30,12 +28,12 @@ export const PriceDisplay: React.FC<PriceDisplayProps> = ({
       {/* Main Price */}
       <div className="flex items-center gap-4">
         <div className="text-3xl font-bold text-white">
-          ${price.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          ${price}
         </div>
         <div className={`flex items-center gap-2 px-3 py-1 rounded-lg ${bgColor}`}>
           {React.createElement(icon, { className: `w-4 h-4 ${changeColor}` })}
           <span className={`font-semibold ${changeColor}`}>
-            {isPositive ? '+' : ''}{changePercent.toFixed(2)}%
+            {isPositive ? '+' : ''}{change.toFixed(2)}%
           </span>
         </div>
       </div>
