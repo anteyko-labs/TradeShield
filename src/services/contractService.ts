@@ -1,63 +1,53 @@
-// Contract Service - Integration with Smart Contracts
 import { ethers } from 'ethers';
 
 // ABI для контрактов (упрощенные версии)
-const TOKEN_REGISTRY_ABI = [
-  "function getTokenBySymbol(string memory symbol) external view returns (address)",
-  "function getTokenInfo(address tokenAddress) external view returns (tuple(string name, string symbol, string logoUrl, string description, uint8 decimals, uint256 totalSupply, uint256 maxSupply, bool isActive, uint256 createdAt))",
-  "function getAllTokens() external view returns (address[])",
-  "function getActiveTokens() external view returns (address[])",
-  "function registerToken(string memory name, string memory symbol, uint8 decimals, uint256 initialSupply, uint256 maxSupply, string memory logoUrl, string memory description) external returns (address)"
+const TOKEN_ABI = [
+  "function name() view returns (string)",
+  "function symbol() view returns (string)",
+  "function decimals() view returns (uint8)",
+  "function totalSupply() view returns (uint256)",
+  "function balanceOf(address) view returns (uint256)",
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) returns (bool)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "event Transfer(address indexed from, address indexed to, uint256 value)",
+  "event Approval(address indexed owner, address indexed spender, uint256 value)"
 ];
 
-const UNIVERSAL_DEX_ABI = [
-  "function createPair(address tokenA, address tokenB, uint256 amountA, uint256 amountB) external returns (bool)",
-  "function addLiquidity(address tokenA, address tokenB, uint256 amountA, uint256 amountB) external returns (bool)",
-  "function createOrder(address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, bool isBuy) external returns (uint256)",
-  "function executeOrder(uint256 orderId) external returns (bool)",
-  "function cancelOrder(uint256 orderId) external returns (bool)",
-  "function getPairInfo(address tokenA, address tokenB) external view returns (tuple(address tokenA, address tokenB, uint256 reserveA, uint256 reserveB, uint256 totalSupply, bool isActive, uint256 createdAt, address creator))",
-  "function getAllPairs() external view returns (address[][])",
-  "function getUserOrders(address user) external view returns (uint256[])",
-  "function getOrderInfo(uint256 orderId) external view returns (tuple(uint256 id, address user, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 price, bool isBuy, bool isFilled, uint256 timestamp))",
-  "function getPrice(address tokenA, address tokenB) external view returns (uint256)",
-  "function calculateSwap(address tokenIn, address tokenOut, uint256 amountIn) external view returns (uint256)"
+const DEX_ABI = [
+  "function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut)",
+  "function getAmountOut(uint256 amountIn, uint256 reserveIn, uint256 reserveOut) view returns (uint256)",
+  "function getPairInfo(address tokenA, address tokenB) view returns (tuple(address tokenA, address tokenB, uint256 reserveA, uint256 reserveB, bool isActive))",
+  "function createPair(address tokenA, address tokenB, uint256 initialAmountA, uint256 initialAmountB)",
+  "function addLiquidity(address tokenA, address tokenB, uint256 amountA, uint256 amountB)",
+  "event PairCreated(bytes32 indexed pairHash, address tokenA, address tokenB)",
+  "event OrderPlaced(uint256 indexed orderId, address indexed user, address tokenIn, address tokenOut, uint256 amountIn)",
+  "event OrderFilled(uint256 indexed orderId, address indexed user, uint256 amountOut)"
 ];
 
-const USER_WALLET_ABI = [
-  "function depositToken(address token, uint256 amount) external returns (bool)",
-  "function withdrawToken(address token, uint256 amount) external returns (bool)",
-  "function getTokenBalance(address user, address token) external view returns (uint256)",
-  "function getPosition(address user, address token) external view returns (tuple(address token, uint256 amount, uint256 averagePrice, uint256 totalCost, uint256 realizedPnl, uint256 unrealizedPnl, bool isLong, uint256 createdAt, uint256 lastUpdated))",
-  "function getUserTokens(address user) external view returns (address[])",
-  "function getActiveTokens(address user) external view returns (address[])",
-  "function getTotalBalance(address user) external view returns (uint256)",
-  "function getTotalPnl(address user) external view returns (uint256, uint256)",
-  "function hasUserToken(address user, address token) external view returns (bool)"
+const REGISTRY_ABI = [
+  "function getTokenBySymbol(string memory symbol) view returns (address)",
+  "function getTokenInfo(address tokenAddress) view returns (tuple(address tokenAddress, string name, string symbol, string logoUrl, string description, uint8 decimals, bool isActive))",
+  "function getAllTokens() view returns (address[])",
+  "function getActiveTokens() view returns (address[])"
 ];
 
-const ERC20_ABI = [
-  "function name() external view returns (string)",
-  "function symbol() external view returns (string)",
-  "function decimals() external view returns (uint8)",
-  "function totalSupply() external view returns (uint256)",
-  "function balanceOf(address account) external view returns (uint256)",
-  "function transfer(address to, uint256 amount) external returns (bool)",
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function allowance(address owner, address spender) external view returns (uint256)",
-  "function transferFrom(address from, address to, uint256 amount) external returns (bool)"
-];
+export interface ContractConfig {
+  tokenRegistryAddress: string;
+  dexAddress: string;
+  rpcUrl: string;
+  chainId: number;
+}
 
 export interface TokenInfo {
+  address: string;
   name: string;
   symbol: string;
-  logoUrl: string;
-  description: string;
   decimals: number;
-  totalSupply: string;
-  maxSupply: string;
-  isActive: boolean;
-  createdAt: string;
+  balance: string;
+  logoUrl?: string;
+  description?: string;
 }
 
 export interface TradingPair {
@@ -65,320 +55,201 @@ export interface TradingPair {
   tokenB: string;
   reserveA: string;
   reserveB: string;
-  totalSupply: string;
   isActive: boolean;
-  createdAt: string;
-  creator: string;
-}
-
-export interface Order {
-  id: string;
-  user: string;
-  tokenIn: string;
-  tokenOut: string;
-  amountIn: string;
-  amountOut: string;
-  price: string;
-  isBuy: boolean;
-  isFilled: boolean;
-  timestamp: string;
-}
-
-export interface Position {
-  token: string;
-  amount: string;
-  averagePrice: string;
-  totalCost: string;
-  realizedPnl: string;
-  unrealizedPnl: string;
-  isLong: boolean;
-  createdAt: string;
-  lastUpdated: string;
 }
 
 class ContractService {
-  private provider: ethers.providers.Provider;
-  private tokenRegistry: ethers.Contract;
-  private dex: ethers.Contract;
-  private userWallet: ethers.Contract;
+  private signer: ethers.Signer | null = null;
+  private config: ContractConfig | null = null;
 
-  constructor(provider: ethers.providers.Provider) {
-    this.provider = provider;
-    
-    // Адреса контрактов (будут загружены из .env)
-    const tokenRegistryAddress = process.env.VITE_TOKEN_REGISTRY_ADDRESS;
-    const dexAddress = process.env.VITE_UNIVERSAL_DEX_ADDRESS;
-    const userWalletAddress = process.env.VITE_USER_WALLET_ADDRESS;
-
-    if (!tokenRegistryAddress || !dexAddress || !userWalletAddress) {
-      throw new Error('Contract addresses not found in environment variables');
-    }
-
-    this.tokenRegistry = new ethers.Contract(tokenRegistryAddress, TOKEN_REGISTRY_ABI, provider);
-    this.dex = new ethers.Contract(dexAddress, UNIVERSAL_DEX_ABI, provider);
-    this.userWallet = new ethers.Contract(userWalletAddress, USER_WALLET_ABI, provider);
+  async initialize(config: ContractConfig, signer: ethers.Signer) {
+    this.config = config;
+    this.signer = signer;
   }
 
-  // Token Registry methods
-  async getTokenBySymbol(symbol: string): Promise<string> {
-    return await this.tokenRegistry.getTokenBySymbol(symbol);
+  private getTokenContract(address: string): ethers.Contract {
+    if (!this.signer) throw new Error('Contract service not initialized');
+    return new ethers.Contract(address, TOKEN_ABI, this.signer);
   }
 
+  private getDEXContract(): ethers.Contract {
+    if (!this.signer || !this.config) throw new Error('Contract service not initialized');
+    return new ethers.Contract(this.config.dexAddress, DEX_ABI, this.signer);
+  }
+
+  private getRegistryContract(): ethers.Contract {
+    if (!this.signer || !this.config) throw new Error('Contract service not initialized');
+    return new ethers.Contract(this.config.tokenRegistryAddress, REGISTRY_ABI, this.signer);
+  }
+
+  // Получить информацию о токене
   async getTokenInfo(tokenAddress: string): Promise<TokenInfo> {
-    const info = await this.tokenRegistry.getTokenInfo(tokenAddress);
+    const contract = this.getTokenContract(tokenAddress);
+    const [name, symbol, decimals, balance] = await Promise.all([
+      contract.name(),
+      contract.symbol(),
+      contract.decimals(),
+      contract.balanceOf(await this.signer!.getAddress())
+    ]);
+
     return {
-      name: info.name,
-      symbol: info.symbol,
-      logoUrl: info.logoUrl,
-      description: info.description,
-      decimals: info.decimals,
-      totalSupply: info.totalSupply.toString(),
-      maxSupply: info.maxSupply.toString(),
-      isActive: info.isActive,
-      createdAt: new Date(Number(info.createdAt) * 1000).toISOString()
+      address: tokenAddress,
+      name,
+      symbol,
+      decimals: Number(decimals),
+      balance: balance.toString()
     };
   }
 
+  // Получить баланс токена
+  async getTokenBalance(tokenAddress: string, userAddress: string): Promise<string> {
+    const contract = this.getTokenContract(tokenAddress);
+    const balance = await contract.balanceOf(userAddress);
+    return balance.toString();
+  }
+
+  // Получить все токены из реестра
   async getAllTokens(): Promise<string[]> {
-    return await this.tokenRegistry.getAllTokens();
+    const registry = this.getRegistryContract();
+    return await registry.getAllTokens();
   }
 
+  // Получить активные токены
   async getActiveTokens(): Promise<string[]> {
-    return await this.tokenRegistry.getActiveTokens();
+    const registry = this.getRegistryContract();
+    return await registry.getActiveTokens();
   }
 
-  async registerToken(
-    signer: ethers.Signer,
-    name: string,
-    symbol: string,
-    decimals: number,
-    initialSupply: string,
-    maxSupply: string,
-    logoUrl: string,
-    description: string
-  ): Promise<string> {
-    const contract = this.tokenRegistry.connect(signer);
-    const tx = await contract.registerToken(
-      name,
-      symbol,
-      decimals,
-      ethers.utils.parseUnits(initialSupply, decimals),
-      ethers.utils.parseUnits(maxSupply, decimals),
-      logoUrl,
-      description
-    );
-    await tx.wait();
-    return tx.hash;
+  // Получить токен по символу
+  async getTokenBySymbol(symbol: string): Promise<string> {
+    const registry = this.getRegistryContract();
+    return await registry.getTokenBySymbol(symbol);
   }
 
-  // DEX methods
-  async createPair(
-    signer: ethers.Signer,
-    tokenA: string,
-    tokenB: string,
-    amountA: string,
-    amountB: string
-  ): Promise<string> {
-    const contract = this.dex.connect(signer);
-    const tx = await contract.createPair(tokenA, tokenB, amountA, amountB);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async addLiquidity(
-    signer: ethers.Signer,
-    tokenA: string,
-    tokenB: string,
-    amountA: string,
-    amountB: string
-  ): Promise<string> {
-    const contract = this.dex.connect(signer);
-    const tx = await contract.addLiquidity(tokenA, tokenB, amountA, amountB);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async createOrder(
-    signer: ethers.Signer,
-    tokenIn: string,
-    tokenOut: string,
-    amountIn: string,
-    amountOut: string,
-    isBuy: boolean
-  ): Promise<string> {
-    const contract = this.dex.connect(signer);
-    const tx = await contract.createOrder(tokenIn, tokenOut, amountIn, amountOut, isBuy);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async executeOrder(signer: ethers.Signer, orderId: string): Promise<string> {
-    const contract = this.dex.connect(signer);
-    const tx = await contract.executeOrder(orderId);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async cancelOrder(signer: ethers.Signer, orderId: string): Promise<string> {
-    const contract = this.dex.connect(signer);
-    const tx = await contract.cancelOrder(orderId);
-    await tx.wait();
-    return tx.hash;
-  }
-
+  // Получить информацию о торговой паре
   async getPairInfo(tokenA: string, tokenB: string): Promise<TradingPair> {
-    const pair = await this.dex.getPairInfo(tokenA, tokenB);
+    const dex = this.getDEXContract();
+    const pair = await dex.getPairInfo(tokenA, tokenB);
     return {
       tokenA: pair.tokenA,
       tokenB: pair.tokenB,
       reserveA: pair.reserveA.toString(),
       reserveB: pair.reserveB.toString(),
-      totalSupply: pair.totalSupply.toString(),
-      isActive: pair.isActive,
-      createdAt: new Date(Number(pair.createdAt) * 1000).toISOString(),
-      creator: pair.creator
+      isActive: pair.isActive
     };
   }
 
-  async getAllPairs(): Promise<string[][]> {
-    return await this.dex.getAllPairs();
-  }
-
-  async getUserOrders(userAddress: string): Promise<string[]> {
-    const orders = await this.dex.getUserOrders(userAddress);
-    return orders.map((id: any) => id.toString());
-  }
-
-  async getOrderInfo(orderId: string): Promise<Order> {
-    const order = await this.dex.getOrderInfo(orderId);
-    return {
-      id: order.id.toString(),
-      user: order.user,
-      tokenIn: order.tokenIn,
-      tokenOut: order.tokenOut,
-      amountIn: order.amountIn.toString(),
-      amountOut: order.amountOut.toString(),
-      price: order.price.toString(),
-      isBuy: order.isBuy,
-      isFilled: order.isFilled,
-      timestamp: new Date(Number(order.timestamp) * 1000).toISOString()
-    };
-  }
-
-  async getPrice(tokenA: string, tokenB: string): Promise<string> {
-    const price = await this.dex.getPrice(tokenA, tokenB);
-    return price.toString();
-  }
-
-  async calculateSwap(tokenIn: string, tokenOut: string, amountIn: string): Promise<string> {
-    const amountOut = await this.dex.calculateSwap(tokenIn, tokenOut, amountIn);
+  // Рассчитать количество токенов на выходе
+  async getAmountOut(amountIn: string, reserveIn: string, reserveOut: string): Promise<string> {
+    const dex = this.getDEXContract();
+    const amountOut = await dex.getAmountOut(amountIn, reserveIn, reserveOut);
     return amountOut.toString();
   }
 
-  // User Wallet methods
-  async depositToken(
-    signer: ethers.Signer,
-    token: string,
-    amount: string
-  ): Promise<string> {
-    const contract = this.userWallet.connect(signer);
-    const tx = await contract.depositToken(token, amount);
-    await tx.wait();
-    return tx.hash;
+  // Выполнить свап
+  async swap(
+    tokenIn: string,
+    tokenOut: string,
+    amountIn: string,
+    minAmountOut: string
+  ): Promise<ethers.providers.TransactionResponse> {
+    const dex = this.getDEXContract();
+    
+    // Сначала нужно дать разрешение DEX на трату токенов
+    const tokenContract = this.getTokenContract(tokenIn);
+    const allowance = await tokenContract.allowance(await this.signer!.getAddress(), this.config!.dexAddress);
+    
+    if (allowance < amountIn) {
+      const approveTx = await tokenContract.approve(this.config!.dexAddress, ethers.constants.MaxUint256);
+      await approveTx.wait();
+    }
+
+    // Выполняем свап
+    const tx = await dex.swap(tokenIn, tokenOut, amountIn, minAmountOut);
+    return tx;
   }
 
-  async withdrawToken(
-    signer: ethers.Signer,
-    token: string,
-    amount: string
-  ): Promise<string> {
-    const contract = this.userWallet.connect(signer);
-    const tx = await contract.withdrawToken(token, amount);
-    await tx.wait();
-    return tx.hash;
+  // Создать торговую пару (только для владельца)
+  async createPair(
+    tokenA: string,
+    tokenB: string,
+    initialAmountA: string,
+    initialAmountB: string
+  ): Promise<ethers.providers.TransactionResponse> {
+    const dex = this.getDEXContract();
+    const tx = await dex.createPair(tokenA, tokenB, initialAmountA, initialAmountB);
+    return tx;
   }
 
-  async getTokenBalance(userAddress: string, token: string): Promise<string> {
-    const balance = await this.userWallet.getTokenBalance(userAddress, token);
-    return balance.toString();
+  // Добавить ликвидность
+  async addLiquidity(
+    tokenA: string,
+    tokenB: string,
+    amountA: string,
+    amountB: string
+  ): Promise<ethers.providers.TransactionResponse> {
+    const dex = this.getDEXContract();
+    
+    // Даем разрешение на трату токенов
+    const tokenAContract = this.getTokenContract(tokenA);
+    const tokenBContract = this.getTokenContract(tokenB);
+    
+    const allowanceA = await tokenAContract.allowance(await this.signer!.getAddress(), this.config!.dexAddress);
+    const allowanceB = await tokenBContract.allowance(await this.signer!.getAddress(), this.config!.dexAddress);
+    
+    if (allowanceA < amountA) {
+      const approveTxA = await tokenAContract.approve(this.config!.dexAddress, ethers.constants.MaxUint256);
+      await approveTxA.wait();
+    }
+    
+    if (allowanceB < amountB) {
+      const approveTxB = await tokenBContract.approve(this.config!.dexAddress, ethers.constants.MaxUint256);
+      await approveTxB.wait();
+    }
+
+    const tx = await dex.addLiquidity(tokenA, tokenB, amountA, amountB);
+    return tx;
   }
 
-  async getPosition(userAddress: string, token: string): Promise<Position> {
-    const position = await this.userWallet.getPosition(userAddress, token);
-    return {
-      token: position.token,
-      amount: position.amount.toString(),
-      averagePrice: position.averagePrice.toString(),
-      totalCost: position.totalCost.toString(),
-      realizedPnl: position.realizedPnl.toString(),
-      unrealizedPnl: position.unrealizedPnl.toString(),
-      isLong: position.isLong,
-      createdAt: new Date(Number(position.createdAt) * 1000).toISOString(),
-      lastUpdated: new Date(Number(position.lastUpdated) * 1000).toISOString()
-    };
+  // Получить все токены пользователя с балансами
+  async getUserTokens(): Promise<TokenInfo[]> {
+    const activeTokens = await this.getActiveTokens();
+    const userAddress = await this.signer!.getAddress();
+    
+    const tokenInfos = await Promise.all(
+      activeTokens.map(async (tokenAddress) => {
+        try {
+          const contract = this.getTokenContract(tokenAddress);
+          const [name, symbol, decimals, balance] = await Promise.all([
+            contract.name(),
+            contract.symbol(),
+            contract.decimals(),
+            contract.balanceOf(userAddress)
+          ]);
+
+          return {
+            address: tokenAddress,
+            name,
+            symbol,
+            decimals: Number(decimals),
+            balance: balance.toString()
+          };
+        } catch (error) {
+          console.error(`Error fetching token ${tokenAddress}:`, error);
+          return null;
+        }
+      })
+    );
+
+    return tokenInfos.filter((info): info is TokenInfo => info !== null);
   }
 
-  async getUserTokens(userAddress: string): Promise<string[]> {
-    return await this.userWallet.getUserTokens(userAddress);
-  }
-
-  async getActiveTokens(userAddress: string): Promise<string[]> {
-    return await this.userWallet.getActiveTokens(userAddress);
-  }
-
-  async getTotalBalance(userAddress: string): Promise<string> {
-    const balance = await this.userWallet.getTotalBalance(userAddress);
-    return balance.toString();
-  }
-
-  async getTotalPnl(userAddress: string): Promise<{ realized: string; unrealized: string }> {
-    const [realized, unrealized] = await this.userWallet.getTotalPnl(userAddress);
-    return {
-      realized: realized.toString(),
-      unrealized: unrealized.toString()
-    };
-  }
-
-  async hasUserToken(userAddress: string, token: string): Promise<boolean> {
-    return await this.userWallet.hasUserToken(userAddress, token);
-  }
-
-  // ERC20 Token methods
-  async getTokenContract(tokenAddress: string): Promise<ethers.Contract> {
-    return new ethers.Contract(tokenAddress, ERC20_ABI, this.provider);
-  }
-
-  async getTokenBalance(tokenAddress: string, userAddress: string): Promise<string> {
-    const contract = await this.getTokenContract(tokenAddress);
-    const balance = await contract.balanceOf(userAddress);
-    return balance.toString();
-  }
-
-  async approveToken(
-    signer: ethers.Signer,
-    tokenAddress: string,
-    spender: string,
-    amount: string
-  ): Promise<string> {
-    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-    const tx = await contract.approve(spender, amount);
-    await tx.wait();
-    return tx.hash;
-  }
-
-  async transferToken(
-    signer: ethers.Signer,
-    tokenAddress: string,
-    to: string,
-    amount: string
-  ): Promise<string> {
-    const contract = new ethers.Contract(tokenAddress, ERC20_ABI, signer);
-    const tx = await contract.transfer(to, amount);
-    await tx.wait();
-    return tx.hash;
+  // Получить ETH баланс
+  async getETHBalance(): Promise<string> {
+    if (!this.signer) throw new Error('Contract service not initialized');
+    const balance = await this.signer.provider!.getBalance(await this.signer.getAddress());
+    return ethers.utils.formatEther(balance);
   }
 }
 
-export const contractService = new ContractService(
-  new ethers.providers.JsonRpcProvider(process.env.VITE_SEPOLIA_RPC_URL)
-);
+export const contractService = new ContractService();

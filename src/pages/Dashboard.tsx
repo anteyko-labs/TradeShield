@@ -4,8 +4,8 @@ import { Button } from '../components/Button';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { TradingInterface } from '../components/TradingInterface';
 import { ProfessionalTradingInterface } from '../components/ProfessionalTradingInterface';
-import { MEVProtection } from '../components/MEVProtection';
-import { TokenManagement } from '../components/TokenManagement';
+import { RealMEVProtection } from '../components/RealMEVProtection';
+import { RealTokenManagement } from '../components/RealTokenManagement';
 import { TradingViewTicker } from '../components/TradingViewTicker';
 import { SimpleTicker } from '../components/SimpleTicker';
 import { MockTicker } from '../components/MockTicker';
@@ -132,8 +132,8 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
       <div className="p-6">
         <div className="animate-fade-in">
           {activeTab === 'trading' && <ProfessionalTradingInterface />}
-          {activeTab === 'mev' && <MEVProtection />}
-          {activeTab === 'tokens' && <TokenManagement />}
+          {activeTab === 'mev' && <RealMEVProtection />}
+          {activeTab === 'tokens' && <RealTokenManagement />}
           {activeTab === 'tools' && <TradingTools />}
           {activeTab === 'analytics' && (
             <div className="space-y-6">

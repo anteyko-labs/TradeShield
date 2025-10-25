@@ -5,8 +5,7 @@ import { useWeb3 } from '../providers/RealWeb3Provider';
 import { useRealData } from '../hooks/useRealData';
 import { CleanTradingViewWidget } from './CleanTradingViewWidget';
 import { tradingService } from '../services/tradingService';
-import { useTrading } from '../hooks/useTrading';
-import { Portfolio } from './Portfolio';
+import { useRealTrading } from '../hooks/useRealTrading';
 
 interface TradingPair {
   id: string;
@@ -28,11 +27,13 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const { address } = useWeb3();
   const { tradingPairs } = useRealData();
   const { 
-    portfolio, 
-    createOrder, 
-    cancelOrder, 
-    updatePrices
-  } = useTrading(address);
+    balances,
+    positions,
+    executeTrade,
+    getTotalValue,
+    getTotalPnl,
+    getTotalPnlPercent
+  } = useRealTrading();
   
   // State for trading
   const [selectedPair] = useState<TradingPair | null>(null);
@@ -85,21 +86,21 @@ export const ProfessionalTradingInterface: React.FC = () => {
       setOrderBook(newOrderBook);
       
       // Update prices for trading engine
-      if (currentPair) {
-        updatePrices({
-          [currentPair.id]: currentPair.price
-        });
-      }
+      // if (currentPair) {
+      //   updatePrices({
+      //     [currentPair.id]: currentPair.price
+      //   });
+      // }
     };
 
     updateOrderBook();
     const interval = setInterval(updateOrderBook, 500);
 
     return () => clearInterval(interval);
-  }, [currentPair, updatePrices]);
+  }, [currentPair]);
 
   // Real trading functions
-  const executeTrade = async () => {
+  const handleTrade = async () => {
     if (!address) {
       alert('Please connect your wallet first');
       return;
@@ -116,21 +117,23 @@ export const ProfessionalTradingInterface: React.FC = () => {
     }
 
     try {
-      const result = await createOrder(
-        currentPair?.id || 'BTC/USDT',
+      const tokenSymbol = currentPair?.id?.split('/')[0] || 'BTC';
+      const tradePrice = orderType === 'limit' ? parseFloat(price) : currentPair?.price || 0;
+      
+      const success = await executeTrade(
         side,
-        orderType,
+        tokenSymbol,
         parseFloat(amount),
-        orderType === 'limit' ? parseFloat(price) : undefined
+        tradePrice
       );
 
-      if (result.success) {
-        alert(`Order created successfully: ${side.toUpperCase()} ${amount} ${currentPair?.id}`);
+      if (success) {
+        alert(`Trade executed successfully: ${side.toUpperCase()} ${amount} ${tokenSymbol}`);
         // Reset form
         setAmount('');
         setPrice('');
       } else {
-        alert(`Order failed: ${result.error}`);
+        alert(`Trade failed: Unknown error`);
       }
     } catch (error) {
       console.error('Trade execution failed:', error);
@@ -195,7 +198,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
           
           <div className="flex items-center space-x-4">
             <div className="text-sm text-gray-400">
-              Trading Balance: ${portfolio ? portfolio.availableBalance.toFixed(2) : '0.00'}
+              Trading Balance: ${getTotalValue().toFixed(2)}
             </div>
             <button
               onClick={() => setShowPortfolio(!showPortfolio)}
@@ -212,18 +215,47 @@ export const ProfessionalTradingInterface: React.FC = () => {
       </div>
 
       {/* Portfolio Display */}
-      {showPortfolio && portfolio && (
+      {showPortfolio && (
         <div className="bg-gray-800 border-b border-gray-700 p-4">
-          <Portfolio
-            positions={portfolio.positions}
-            orders={portfolio.orders}
-            trades={portfolio.trades}
-            totalBalance={portfolio.totalBalance}
-            availableBalance={portfolio.availableBalance}
-            totalPnl={portfolio.totalPnl}
-            totalPnlPercent={portfolio.totalPnlPercent}
-            onCancelOrder={cancelOrder}
-          />
+          <div className="text-white">
+            <h3 className="text-lg font-semibold mb-4">Portfolio</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h4 className="text-sm text-gray-400 mb-2">Balances</h4>
+                {balances.map((balance, index) => (
+                  <div key={index} className="flex justify-between text-sm">
+                    <span>{balance.symbol}:</span>
+                    <span>{balance.balance.toFixed(6)}</span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 className="text-sm text-gray-400 mb-2">Positions</h4>
+                {positions.length > 0 ? (
+                  positions.map((position, index) => (
+                    <div key={index} className="flex justify-between text-sm">
+                      <span>{position.symbol}:</span>
+                      <span>{position.amount.toFixed(6)}</span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-gray-500 text-sm">No positions</div>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-700">
+              <div className="flex justify-between text-sm mb-2">
+                <span>Total Value:</span>
+                <span className="font-semibold">${getTotalValue().toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span>Total PnL:</span>
+                <span className={`font-semibold ${getTotalPnl() >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {getTotalPnl() >= 0 ? '+' : ''}${getTotalPnl().toFixed(2)} ({getTotalPnlPercent() >= 0 ? '+' : ''}{getTotalPnlPercent().toFixed(2)}%)
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -424,7 +456,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
           <div className="p-3 border-t border-gray-700 flex-shrink-0" style={{ paddingBottom: 'calc(0.75rem + 5px)' }}>
             {/* Execute Trade Button - Main Button at Bottom */}
             <button
-              onClick={executeTrade}
+              onClick={handleTrade}
               className={`w-full py-3 rounded font-semibold text-sm mb-2 ${
                 side === 'buy'
                   ? 'bg-blue-600 hover:bg-blue-700'

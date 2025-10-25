@@ -70,7 +70,7 @@ export const CleanTradingViewWidget: React.FC<CleanTradingViewWidgetProps> = ({
           studies: [
             'Volume@tv-basicstudies'
           ],
-          container_id: containerRef.current.id,
+          container_id: containerRef.current?.id || `tradingview_${Math.random().toString(36).substring(2, 15)}`,
           overrides: {
             'paneProperties.background': '#1e1e1e',
             'paneProperties.vertGridProperties.color': '#2a2a2a',

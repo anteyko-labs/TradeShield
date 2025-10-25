@@ -1,6 +1,16 @@
 import { useState, useEffect } from 'react';
-import { getTokenPrices, getTradingPairs, subscribeToPriceUpdates, getHistoricalData } from '../services/priceService';
-import { TokenPrice, TradingPair } from '../services/priceService';
+import { priceService, TokenPrice } from '../services/priceService';
+import { getRealCryptoPrices } from '../services/realDataService';
+
+export interface TradingPair {
+  id: string;
+  name: string;
+  price: number;
+  change: number;
+  volume: string;
+  high24h: number;
+  low24h: number;
+}
 
 export const useRealData = () => {
   const [tokenPrices, setTokenPrices] = useState<TokenPrice[]>([]);
@@ -12,12 +22,31 @@ export const useRealData = () => {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        const [prices, pairs] = await Promise.all([
-          getTokenPrices(),
-          getTradingPairs(),
-        ]);
+        
+        // Получаем реальные данные о криптовалютах
+        const realPrices = await getRealCryptoPrices();
+        
+        // Конвертируем в формат TokenPrice
+        const prices: TokenPrice[] = realPrices.map(price => ({
+          symbol: price.symbol,
+          price: price.price,
+          change24h: price.changePercent24h,
+          volume24h: price.volume24h
+        }));
         
         setTokenPrices(prices);
+        
+        // Создаем торговые пары
+        const pairs: TradingPair[] = realPrices.map(price => ({
+          id: `${price.symbol}/USDT`,
+          name: `${price.symbol}/USDT`,
+          price: price.price,
+          change: price.changePercent24h,
+          volume: formatVolume(price.volume24h),
+          high24h: price.high24h,
+          low24h: price.low24h
+        }));
+        
         setTradingPairs(pairs);
         setError(null);
       } catch (err) {
@@ -30,30 +59,52 @@ export const useRealData = () => {
 
     fetchInitialData();
 
-    // Subscribe to real-time updates
-    const unsubscribe = subscribeToPriceUpdates((updatedPrices) => {
-      setTokenPrices(updatedPrices);
-      
-      // Update trading pairs with new prices
-      setTradingPairs(prevPairs => 
-        prevPairs.map(pair => {
-          const tokenPrice = updatedPrices.find(p => p.symbol === pair.base);
-          if (tokenPrice) {
-            return {
-              ...pair,
-              price: tokenPrice.price,
-              change: tokenPrice.change24h,
-            };
-          }
-          return pair;
-        })
-      );
-    });
+    // Обновляем данные каждые 30 секунд
+    const interval = setInterval(async () => {
+      try {
+        const realPrices = await getRealCryptoPrices();
+        
+        const prices: TokenPrice[] = realPrices.map(price => ({
+          symbol: price.symbol,
+          price: price.price,
+          change24h: price.changePercent24h,
+          volume24h: price.volume24h
+        }));
+        
+        setTokenPrices(prices);
+        
+        const pairs: TradingPair[] = realPrices.map(price => ({
+          id: `${price.symbol}/USDT`,
+          name: `${price.symbol}/USDT`,
+          price: price.price,
+          change: price.changePercent24h,
+          volume: formatVolume(price.volume24h),
+          high24h: price.high24h,
+          low24h: price.low24h
+        }));
+        
+        setTradingPairs(pairs);
+      } catch (err) {
+        console.error('Error updating data:', err);
+      }
+    }, 30000);
 
     return () => {
-      unsubscribe();
+      clearInterval(interval);
     };
   }, []);
+
+  const formatVolume = (volume: number): string => {
+    if (volume >= 1e9) {
+      return `${(volume / 1e9).toFixed(1)}B`;
+    } else if (volume >= 1e6) {
+      return `${(volume / 1e6).toFixed(1)}M`;
+    } else if (volume >= 1e3) {
+      return `${(volume / 1e3).toFixed(1)}K`;
+    } else {
+      return volume.toFixed(0);
+    }
+  };
 
   const getTokenPrice = (symbol: string): number => {
     const token = tokenPrices.find(t => t.symbol === symbol);
@@ -65,8 +116,8 @@ export const useRealData = () => {
     return token ? token.change24h : 0;
   };
 
-  const getTradingPair = (id: string): TradingPair | undefined => {
-    return tradingPairs.find(pair => pair.id === id);
+  const getTradingPair = (pairId: string): TradingPair | undefined => {
+    return tradingPairs.find(p => p.id === pairId);
   };
 
   return {
@@ -78,27 +129,4 @@ export const useRealData = () => {
     getTokenChange,
     getTradingPair,
   };
-};
-
-export const useHistoricalData = (symbol: string, timeframe: '1h' | '4h' | '1d' = '1h') => {
-  const [data, setData] = useState<Array<{ timestamp: number; price: number; volume: number }>>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const historicalData = await getHistoricalData(symbol, timeframe);
-        setData(historicalData);
-      } catch (err) {
-        console.error('Error fetching historical data:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [symbol, timeframe]);
-
-  return { data, loading };
 };
