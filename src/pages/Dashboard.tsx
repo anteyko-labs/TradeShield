@@ -4,6 +4,11 @@ import { Button } from '../components/Button';
 import { StatusIndicator } from '../components/StatusIndicator';
 import { TradingInterface } from '../components/TradingInterface';
 import { ProfessionalTradingInterface } from '../components/ProfessionalTradingInterface';
+import { TradingLogs } from '../components/TradingLogs';
+import { PersistentBotBalances } from '../components/PersistentBotBalances';
+import { DatabaseViewer } from '../components/DatabaseViewer';
+import { realBotService } from '../services/realBotService';
+import { TradingEngineView } from '../components/TradingEngineView';
 import { RealMEVProtection } from '../components/RealMEVProtection';
 import { RealTokenManagement } from '../components/RealTokenManagement';
 import { TradingViewTicker } from '../components/TradingViewTicker';
@@ -14,7 +19,7 @@ import { TradingTools } from '../components/TradingTools';
 import { Card } from '../components/Card';
 import { useWeb3 } from '../providers/RealWeb3Provider';
 
-type TabType = 'trading' | 'mev' | 'tokens' | 'analytics' | 'tools';
+type TabType = 'trading' | 'mev' | 'tokens' | 'logs' | 'bots' | 'database' | 'analytics' | 'tools' | 'engine';
 
 interface DashboardProps {
   onDisconnect: () => void;
@@ -23,6 +28,11 @@ interface DashboardProps {
 export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
   const [activeTab, setActiveTab] = useState<TabType>('trading');
   const { address, balance, chainId, getShortAddress } = useWeb3();
+  
+  // Инициализируем торговую систему
+  React.  useEffect(() => {
+    realBotService.initialize();
+  }, []);
   
   const walletAddress = address ? getShortAddress(address) : '0x742d...4f2a';
   const balanceFormatted = balance ? `${balance} ETH` : '0.0000 ETH';
@@ -82,12 +92,44 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
                   Analytics
                 </Button>
                 <Button
+                  variant={activeTab === 'logs' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('logs')}
+                >
+                  <BarChart3 className="w-4 h-4 inline mr-2" />
+                  Logs
+                </Button>
+                <Button
+                  variant={activeTab === 'bots' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('bots')}
+                >
+                  <Settings className="w-4 h-4 inline mr-2" />
+                  Bots
+                </Button>
+                <Button
+                  variant={activeTab === 'database' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('database')}
+                >
+                  <BarChart3 className="w-4 h-4 inline mr-2" />
+                  Database
+                </Button>
+                <Button
                   variant={activeTab === 'tools' ? 'primary' : 'secondary'}
                   size="small"
                   onClick={() => setActiveTab('tools')}
                 >
                   <Settings className="w-4 h-4 inline mr-2" />
                   Tools
+                </Button>
+                <Button
+                  variant={activeTab === 'engine' ? 'primary' : 'secondary'}
+                  size="small"
+                  onClick={() => setActiveTab('engine')}
+                >
+                  <Settings className="w-4 h-4 inline mr-2" />
+                  Engine
                 </Button>
               </div>
             </div>
@@ -134,7 +176,11 @@ export const Dashboard: React.FC<DashboardProps> = ({ onDisconnect }) => {
           {activeTab === 'trading' && <ProfessionalTradingInterface />}
           {activeTab === 'mev' && <RealMEVProtection />}
           {activeTab === 'tokens' && <RealTokenManagement />}
+          {activeTab === 'logs' && <TradingLogs logs={realBotService.getTrades()} />}
+          {activeTab === 'bots' && <PersistentBotBalances bots={realBotService.getBots()} />}
+          {activeTab === 'database' && <DatabaseViewer />}
           {activeTab === 'tools' && <TradingTools />}
+          {activeTab === 'engine' && <TradingEngineView />}
           {activeTab === 'analytics' && (
             <div className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

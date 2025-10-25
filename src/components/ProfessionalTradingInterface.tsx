@@ -4,20 +4,14 @@ import { Button } from './Button';
 import { useDirectWeb3 } from '../hooks/useDirectWeb3';
 import { useRealData } from '../hooks/useRealData';
 import { CleanTradingViewWidget } from './CleanTradingViewWidget';
-import { tradingService } from '../services/tradingService';
-import { useRealTrading } from '../hooks/useRealTrading';
 import { useSimpleBalance } from '../hooks/useSimpleBalance';
 import { useRealExchange } from '../hooks/useRealExchange';
 import { SimpleBalanceTest } from './SimpleBalanceTest';
-import { realTradingService } from '../services/realTradingService';
 import { simpleMintService } from '../services/simpleMintService';
 import { simpleTradingService } from '../services/simpleTradingService';
-import { realTradingSystem } from '../services/realTradingSystem';
-import { realTradingEngine } from '../services/realTradingEngine';
-import { realTradingSystemV2 } from '../services/realTradingSystemV2';
+import { realBotService } from '../services/realBotService';
 import { TradingLogs } from './TradingLogs';
 import { BotBalances } from './BotBalances';
-import { ethers } from 'ethers';
 
 interface TradingPair {
   id: string;
@@ -30,38 +24,31 @@ interface TradingPair {
 }
 
 interface OrderBookEntry {
+  id: string;
+  botId: string;
+  side: 'buy' | 'sell';
+  token: string;
+  amount: number;
   price: number;
-  size: number;
   total: number;
+  timestamp: number;
+  filled: boolean;
 }
 
 export const ProfessionalTradingInterface: React.FC = () => {
   const { address, provider, signer, connect } = useDirectWeb3();
   const { tradingPairs } = useRealData();
-  const { 
-    balances,
-    positions,
-    executeTrade,
-    getTotalValue,
-    getTotalPnl,
-    getTotalPnlPercent,
-    loading
-  } = useRealTrading();
 
   // Простой сервис для балансов
   const {
     balances: simpleBalances,
     totalValue: simpleTotalValue,
-    loading: balanceLoading,
     loadBalances
   } = useSimpleBalance();
 
   // Реальные курсы обмена
   const {
-    exchangeRates,
-    loading: exchangeLoading,
-    executeExchange,
-    getExchangeRate
+    exchangeRates
   } = useRealExchange();
 
   // Инициализируем сервисы
@@ -69,9 +56,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
     if (provider && signer) {
       simpleMintService.initialize(provider, signer);
       simpleTradingService.initialize(provider, signer);
-      realTradingSystem.initialize(provider, signer);
-      realTradingEngine.initialize(provider, signer);
-      realTradingSystemV2.initialize();
+      realBotService.initialize();
     }
   }, [provider, signer]);
   
@@ -83,7 +68,6 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const [price, setPrice] = useState('');
   const [showPortfolio, setShowPortfolio] = useState(false);
   const [activeTab, setActiveTab] = useState<'trading' | 'logs' | 'bots'>('trading');
-  const [totalValue, setTotalValue] = useState(0);
   
   // Mock order book data
   const [orderBook, setOrderBook] = useState<{
@@ -121,27 +105,12 @@ export const ProfessionalTradingInterface: React.FC = () => {
   const displayPairs = tradingPairs.length > 0 ? tradingPairs : mockPairs;
   const currentPair = selectedPair || displayPairs[0];
 
-  // Load total value
-  useEffect(() => {
-    const loadTotalValue = async () => {
-      if (getTotalValue) {
-        try {
-          const value = await getTotalValue();
-          setTotalValue(value);
-        } catch (error) {
-          console.error('Error loading total value:', error);
-        }
-      }
-    };
-
-    loadTotalValue();
-  }, [getTotalValue]);
 
   // Update order book and prices every 500ms for fast updates
   useEffect(() => {
     const updateOrderBook = () => {
       try {
-        const realOrderBook = realTradingSystemV2.getTopOrders(currentPair?.id || 'BTC/USDT');
+        const realOrderBook = realBotService.getOrderBook();
         setOrderBook(realOrderBook);
       } catch (error) {
         console.log('Order book update failed:', error);
@@ -280,9 +249,9 @@ export const ProfessionalTradingInterface: React.FC = () => {
                    Trading Balance: ${simpleTotalValue.toFixed(2)}
                  </div>
                  <div className="text-xs text-blue-400">
-                   🤖 Bots: {realTradingSystemV2.getSystemStats().totalBots} | 
-                   📊 Orders: {realTradingSystemV2.getSystemStats().activeOrders} |
-                   💰 Fees: ${realTradingSystemV2.getSystemStats().totalFees.toFixed(2)}
+                  🤖 Bots: {realBotService.getStats().totalBots} | 
+                  📊 Orders: {realBotService.getStats().activeOrders} |
+                  💰 Fees: ${realBotService.getStats().totalFees}
                  </div>
             <button
               onClick={() => setShowPortfolio(!showPortfolio)}
@@ -335,16 +304,7 @@ export const ProfessionalTradingInterface: React.FC = () => {
                    </div>
                    <div>
                      <h4 className="text-sm text-gray-400 mb-2">Positions</h4>
-                     {positions.length > 0 ? (
-                       positions.map((position, index) => (
-                         <div key={index} className="flex justify-between text-sm">
-                           <span>{position.symbol}:</span>
-                           <span>{position.amount.toFixed(6)}</span>
-                         </div>
-                       ))
-                     ) : (
-                       <div className="text-gray-500 text-sm">No positions</div>
-                     )}
+                     <div className="text-gray-500 text-sm">No positions</div>
                    </div>
                  </div>
             <div className="mt-4 pt-4 border-t border-gray-700">

@@ -20,11 +20,23 @@ interface TradingLogsProps {
 }
 
 export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
+  // Проверяем что логи существуют
+  if (!logs || logs.length === 0) {
+    return (
+      <div className="p-6 text-center">
+        <div className="text-gray-400 text-lg mb-2">📊</div>
+        <div className="text-gray-400">No trades yet</div>
+        <div className="text-gray-500 text-sm mt-1">Trading activity will appear here</div>
+      </div>
+    );
+  }
+
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString();
   };
 
-  const formatAddress = (address: string) => {
+  const formatAddress = (address: string | undefined) => {
+    if (!address) return 'N/A';
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   };
 
@@ -45,10 +57,12 @@ export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return 'text-green-400';
-      case 'pending': return 'text-yellow-400';
-      case 'failed': return 'text-red-400';
-      default: return 'text-gray-400';
+      case 'buy': return 'bg-green-500/20 text-green-400';
+      case 'sell': return 'bg-red-500/20 text-red-400';
+      case 'completed': return 'bg-green-500/20 text-green-400';
+      case 'pending': return 'bg-yellow-500/20 text-yellow-400';
+      case 'failed': return 'bg-red-500/20 text-red-400';
+      default: return 'bg-gray-500/20 text-gray-400';
     }
   };
 
@@ -66,7 +80,7 @@ export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
 
       {/* Logs List */}
       <div className="flex-1 overflow-y-auto">
-        {logs.length > 0 ? (
+        {logs && logs.length > 0 ? (
           <div className="space-y-1">
             {logs.map((log, index) => (
               <div 
@@ -77,8 +91,8 @@ export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
                   <div className="flex items-center space-x-2">
                     <Clock className="w-4 h-4 text-gray-400" />
                     <span className="text-sm text-gray-400">{formatTime(log.timestamp)}</span>
-                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(log.status)}`}>
-                      {log.status.toUpperCase()}
+                    <span className={`text-xs px-2 py-1 rounded ${getStatusColor(log.side || 'completed')}`}>
+                      {(log.side || 'completed').toUpperCase()}
                     </span>
                   </div>
                   <div className="text-sm text-gray-400">
@@ -126,7 +140,7 @@ export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
                   <div>
                     <div className="text-xs text-gray-400 mb-1">Total Value</div>
                     <div className="text-sm font-semibold">
-                      ${formatValue(log.totalValue)}
+                      ${formatValue(log.total || 0)}
                     </div>
                   </div>
                 </div>
@@ -179,7 +193,7 @@ export const TradingLogs: React.FC<TradingLogsProps> = ({ logs }) => {
           <div>
             <div className="text-xs text-gray-400">Volume</div>
             <div className="text-sm font-semibold">
-              ${logs.reduce((sum, log) => sum + log.totalValue, 0).toLocaleString()}
+              ${logs.reduce((sum, log) => sum + (log.total || 0), 0).toLocaleString()}
             </div>
           </div>
         </div>

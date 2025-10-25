@@ -387,7 +387,11 @@ export class RealTradingSystemV2 {
     return this.bots.map(bot => ({
       name: bot.name,
       address: bot.address,
-      balances: { ...bot.balances }
+      balances: {
+        USDT: bot.balances.USDT,
+        BTC: bot.balances.BTC,
+        ETH: bot.balances.ETH
+      }
     }));
   }
 }

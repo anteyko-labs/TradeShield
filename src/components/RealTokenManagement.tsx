@@ -103,7 +103,7 @@ export const RealTokenManagement: React.FC = () => {
             {tradeHistory?.length || 0}
           </div>
           <div className="text-sm text-text-secondary mt-2">
-            {tradeHistory.filter(t => t.type === 'buy').length} buys, {tradeHistory.filter(t => t.type === 'sell').length} sells
+            {tradeHistory?.filter(t => t.type === 'buy').length || 0} buys, {tradeHistory?.filter(t => t.type === 'sell').length || 0} sells
           </div>
         </Card>
       </div>

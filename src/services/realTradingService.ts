@@ -1,370 +1,259 @@
 import { ethers } from 'ethers';
 
-// Реальные адреса контрактов с Sepolia
-const CONTRACT_ADDRESSES = {
-  TOKEN_REGISTRY: '0x0557CF561B428bCf9cDD8b49044E330Ae8BBDa34',
-  DEX: '0xCcA67eB690872566C1260F4777BfE7C79ff4047d',
-  WALLET: '0x72bfaa294E6443E944ECBdad428224cC050C658E',
-  BTC_TOKEN: '0xC941593909348e941420D5404Ab00b5363b1dDB4',
-  ETH_TOKEN: '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb',
-  USDT_TOKEN: '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6'
-};
+export interface RealTradeResult {
+  success: boolean;
+  txHash?: string;
+  error?: string;
+  gasUsed?: string;
+}
 
-// ABI для работы с контрактами
-const TOKEN_ABI = [
-  "function balanceOf(address) view returns (uint256)",
-  "function transfer(address,uint256) returns (bool)",
-  "function approve(address,uint256) returns (bool)",
-  "function transferFrom(address,address,uint256) returns (bool)",
-  "function decimals() view returns (uint8)",
-  "function symbol() view returns (string)",
-  "function name() view returns (string)"
-];
+export interface RealOrder {
+  id: string;
+  user: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  minAmountOut: string;
+  timestamp: number;
+  status: 'pending' | 'filled' | 'cancelled';
+}
 
-const DEX_ABI = [
-  "function swap(address,address,uint256,uint256) returns (uint256)",
-  "function getPairInfo(address,address) view returns (tuple(address tokenA, address tokenB, uint256 reserveA, uint256 reserveB, uint256 totalLiquidity, bool isActive, uint256 lastPrice, uint256 priceUpdateTime))",
-  "function getUserTrades(address) view returns (uint256[])",
-  "function getTrade(uint256) view returns (tuple(address user, address tokenIn, address tokenOut, uint256 amountIn, uint256 amountOut, uint256 price, uint256 timestamp, bytes32 txHash))",
-  "function createPair(address,address,uint256,uint256)"
-];
-
-const WALLET_ABI = [
-  "function getBalance(address,address) view returns (uint256)",
-  "function getAllBalances(address) view returns (address[], uint256[])",
-  "function getPositions(address) view returns (tuple(address token, uint256 amount, uint256 entryPrice, uint256 timestamp, bool isLong)[])",
-  "function depositToken(address,address,uint256)",
-  "function withdrawToken(address,address,uint256)"
-];
-
-/**
- * @title RealTradingService
- * @dev Сервис для РЕАЛЬНОЙ торговли через смарт-контракты
- * Никаких моков - только реальные данные из блокчейна!
- */
 class RealTradingService {
-  public provider: ethers.providers.Provider | null = null;
-  public signer: ethers.Signer | null = null;
-  public dex: ethers.Contract | null = null;
-  public wallet: ethers.Contract | null = null;
-  public usdtToken: ethers.Contract | null = null;
-  public btcToken: ethers.Contract | null = null;
-  public ethToken: ethers.Contract | null = null;
+  private provider: ethers.providers.JsonRpcProvider;
+  private signer?: ethers.Signer;
+  private dexContract?: ethers.Contract;
+  private tokenRegistry?: ethers.Contract;
+  
+  // РЕАЛЬНЫЕ адреса контрактов
+  private readonly DEX_ADDRESS = '0x...'; // Нужен адрес SimpleDEX
+  private readonly TOKEN_REGISTRY_ADDRESS = '0x...'; // Нужен адрес TokenRegistry
+  
+  // РЕАЛЬНЫЕ адреса токенов
+  private readonly USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
+  private readonly BTC_ADDRESS = '0xC941593909348e941420D5404Ab00b5363b1dDB4';
+  private readonly ETH_ADDRESS = '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb';
+  
+  // Кошелек для комиссий
+  private readonly FEE_WALLET_ADDRESS = '0xB468B3837e185B59594A100c1583a98C79b524F3';
+  private readonly FEE_WALLET_PRIVATE_KEY = 'cbd0632c261aa3c4724616833151488df591ee1372c9982cac661ad773d8f42c';
+  
+  // ABI контрактов (упрощенные)
+  private readonly DEX_ABI = [
+    "function swap(address tokenIn, address tokenOut, uint256 amountIn, uint256 minAmountOut) external returns (bool)",
+    "function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn) external view returns (uint256)",
+    "function addLiquidity(address tokenA, address tokenB, uint256 amountA, uint256 amountB) external",
+    "function getReserves(address tokenA, address tokenB) external view returns (uint256, uint256)"
+  ];
+  
+  private readonly TOKEN_REGISTRY_ABI = [
+    "function getTokenAddress(string memory symbol) external view returns (address)",
+    "function registerToken(address tokenAddress, string memory name, string memory symbol) external"
+  ];
 
-  async initialize(provider: ethers.providers.Provider, signer: ethers.Signer) {
+  constructor() {
+    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/your-infura-key');
+  }
+
+  async initialize(provider: ethers.providers.Web3Provider, signer: ethers.Signer): Promise<void> {
     this.provider = provider;
     this.signer = signer;
     
-    // Инициализируем контракты
-    this.dex = new ethers.Contract(CONTRACT_ADDRESSES.DEX, DEX_ABI, signer);
-    this.wallet = new ethers.Contract(CONTRACT_ADDRESSES.WALLET, WALLET_ABI, signer);
-    this.usdtToken = new ethers.Contract(CONTRACT_ADDRESSES.USDT_TOKEN, TOKEN_ABI, signer);
-    this.btcToken = new ethers.Contract(CONTRACT_ADDRESSES.BTC_TOKEN, TOKEN_ABI, signer);
-    this.ethToken = new ethers.Contract(CONTRACT_ADDRESSES.ETH_TOKEN, TOKEN_ABI, signer);
+    if (this.DEX_ADDRESS && this.DEX_ADDRESS !== '0x...') {
+      this.dexContract = new ethers.Contract(this.DEX_ADDRESS, this.DEX_ABI, signer);
+    }
     
-    // Автоматически минтим 1,000,000 USDT для владельца при инициализации
-    await this.autoMintMillionUSDT();
+    if (this.TOKEN_REGISTRY_ADDRESS && this.TOKEN_REGISTRY_ADDRESS !== '0x...') {
+      this.tokenRegistry = new ethers.Contract(this.TOKEN_REGISTRY_ADDRESS, this.TOKEN_REGISTRY_ABI, signer);
+    }
     
-    console.log('✅ Real trading service initialized with deployed contracts');
+    console.log('🔗 RealTradingService инициализирован');
   }
 
-  /**
-   * @dev Получить реальные балансы пользователя
-   */
-  async getRealBalances(userAddress: string) {
-    if (!this.wallet || !this.usdtToken) {
-      console.log('⚠️ Service not initialized, attempting to initialize...');
-      if (this.provider && this.signer) {
-        await this.initialize(this.provider, this.signer);
-      } else {
-        throw new Error('Service not initialized and no provider/signer available');
-      }
+  // РЕАЛЬНАЯ ПОКУПКА ТОКЕНА
+  async buyToken(tokenSymbol: string, usdtAmount: string): Promise<RealTradeResult> {
+    if (!this.signer || !this.dexContract) {
+      return { success: false, error: 'Сервис не инициализирован' };
     }
 
     try {
-      // Получаем баланс USDT напрямую из токена
-      const usdtBalance = await this.usdtToken.balanceOf(userAddress);
-      const usdtBalanceFormatted = parseFloat(ethers.utils.formatUnits(usdtBalance, 6));
-
-      // Получаем баланс BTC
-      const btcBalance = await this.btcToken.balanceOf(userAddress);
-      const btcBalanceFormatted = parseFloat(ethers.utils.formatUnits(btcBalance, 8));
-
-      // Получаем баланс ETH
-      const ethBalance = await this.ethToken.balanceOf(userAddress);
-      const ethBalanceFormatted = parseFloat(ethers.utils.formatUnits(ethBalance, 18));
-
-      return [
-        {
-          symbol: 'USDT',
-          balance: usdtBalanceFormatted,
-          decimals: 6,
-          address: CONTRACT_ADDRESSES.USDT_TOKEN,
-          name: 'TradeShield USDT',
-          valueUSD: usdtBalanceFormatted
-        },
-        {
-          symbol: 'BTC',
-          balance: btcBalanceFormatted,
-          decimals: 8,
-          address: CONTRACT_ADDRESSES.BTC_TOKEN,
-          name: 'TradeShield BTC',
-          valueUSD: btcBalanceFormatted * 110000 // Примерная цена BTC
-        },
-        {
-          symbol: 'ETH',
-          balance: ethBalanceFormatted,
-          decimals: 18,
-          address: CONTRACT_ADDRESSES.ETH_TOKEN,
-          name: 'TradeShield ETH',
-          valueUSD: ethBalanceFormatted * 3200 // Примерная цена ETH
-        }
-      ];
-    } catch (error) {
-      console.error('Error getting real balances:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * @dev Выполнить реальную торговлю
-   */
-  async executeRealTrade(
-    userAddress: string,
-    tokenIn: string,
-    tokenOut: string,
-    amountIn: number,
-    minAmountOut: number
-  ) {
-    if (!this.dex || !this.usdtToken) {
-      throw new Error('Service not initialized');
-    }
-
-    try {
-      // Получаем адрес токена
-      const tokenInAddress = this.getTokenAddress(tokenIn);
-      const tokenOutAddress = this.getTokenAddress(tokenOut);
-
-      // Проверяем баланс
-      const tokenContract = new ethers.Contract(tokenInAddress, TOKEN_ABI, this.signer!);
-      const balance = await tokenContract.balanceOf(userAddress);
-      const requiredAmount = ethers.utils.parseUnits(amountIn.toString(), this.getTokenDecimals(tokenIn));
-
-      if (balance.lt(requiredAmount)) {
-        throw new Error(`Insufficient ${tokenIn} balance`);
+      console.log(`💰 Покупка ${tokenSymbol} за ${usdtAmount} USDT...`);
+      
+      // 1. Получаем адрес токена из реестра
+      const tokenAddress = await this.getTokenAddress(tokenSymbol);
+      if (!tokenAddress) {
+        return { success: false, error: `Токен ${tokenSymbol} не найден` };
       }
 
-      // Одобряем трату
-      const approveTx = await tokenContract.approve(CONTRACT_ADDRESSES.DEX, requiredAmount);
+      // 2. Получаем адрес USDT
+      const usdtAddress = await this.getTokenAddress('USDT');
+      if (!usdtAddress) {
+        return { success: false, error: 'USDT не найден' };
+      }
+
+      // 3. Проверяем баланс USDT у пользователя
+      const usdtContract = new ethers.Contract(usdtAddress, [
+        "function balanceOf(address owner) view returns (uint256)",
+        "function approve(address spender, uint256 amount) returns (bool)"
+      ], this.signer);
+
+      const userAddress = await this.signer.getAddress();
+      const usdtBalance = await usdtContract.balanceOf(userAddress);
+      const amountIn = ethers.utils.parseUnits(usdtAmount, 6); // USDT имеет 6 decimals
+
+      if (usdtBalance.lt(amountIn)) {
+        return { success: false, error: 'Недостаточно USDT' };
+      }
+
+      // 4. Получаем ожидаемое количество токенов
+      const amountOut = await this.dexContract.getAmountOut(usdtAddress, tokenAddress, amountIn);
+      const minAmountOut = amountOut.mul(95).div(100); // 5% slippage
+
+      // 5. Одобряем трату USDT
+      const approveTx = await usdtContract.approve(this.DEX_ADDRESS, amountIn);
       await approveTx.wait();
 
-      // Выполняем свап
-      const swapTx = await this.dex.swap(
-        tokenInAddress,
-        tokenOutAddress,
-        requiredAmount,
-        ethers.utils.parseUnits(minAmountOut.toString(), this.getTokenDecimals(tokenOut))
+      // 6. Выполняем свап
+      const swapTx = await this.dexContract.swap(
+        usdtAddress,
+        tokenAddress, 
+        amountIn,
+        minAmountOut,
+        { gasLimit: 300000 }
       );
 
       const receipt = await swapTx.wait();
-
+      
+      console.log(`✅ Покупка успешна! TX: ${swapTx.hash}`);
+      
       return {
         success: true,
-        txHash: receipt.transactionHash,
+        txHash: swapTx.hash,
         gasUsed: receipt.gasUsed.toString()
       };
-    } catch (error) {
-      console.error('Error executing real trade:', error);
+
+    } catch (error: any) {
+      console.error('❌ Ошибка покупки:', error);
       return {
         success: false,
-        error: error.message
+        error: error.message || 'Неизвестная ошибка'
       };
     }
   }
 
-  /**
-   * @dev Получить реальную цену токена
-   */
-  async getRealTokenPrice(tokenA: string, tokenB: string = 'USDT') {
-    if (!this.dex) {
-      throw new Error('Service not initialized');
+  // РЕАЛЬНАЯ ПРОДАЖА ТОКЕНА
+  async sellToken(tokenSymbol: string, tokenAmount: string): Promise<RealTradeResult> {
+    if (!this.signer || !this.dexContract) {
+      return { success: false, error: 'Сервис не инициализирован' };
     }
 
     try {
-      const tokenAAddress = this.getTokenAddress(tokenA);
-      const tokenBAddress = this.getTokenAddress(tokenB);
+      console.log(`💸 Продажа ${tokenAmount} ${tokenSymbol}...`);
       
-      const pairInfo = await this.dex.getPairInfo(tokenAAddress, tokenBAddress);
-      return parseFloat(ethers.utils.formatUnits(pairInfo.lastPrice, 6));
-    } catch (error) {
-      console.error('Error getting real token price:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * @dev Получить реальные торговли пользователя
-   */
-  async getRealTrades(userAddress: string) {
-    if (!this.dex) {
-      throw new Error('Service not initialized');
-    }
-
-    try {
-      const tradeIds = await this.dex.getUserTrades(userAddress);
-      const trades = [];
-
-      for (const tradeId of tradeIds) {
-        const trade = await this.dex.getTrade(tradeId);
-        trades.push({
-          id: tradeId.toString(),
-          symbol: 'USDT',
-          side: 'buy',
-          amount: parseFloat(ethers.utils.formatUnits(trade.amountIn, 6)),
-          price: parseFloat(ethers.utils.formatUnits(trade.price, 6)),
-          timestamp: trade.timestamp.toNumber(),
-          txHash: trade.txHash,
-          status: 'confirmed'
-        });
+      // 1. Получаем адреса токенов
+      const tokenAddress = await this.getTokenAddress(tokenSymbol);
+      const usdtAddress = await this.getTokenAddress('USDT');
+      
+      if (!tokenAddress || !usdtAddress) {
+        return { success: false, error: 'Токены не найдены' };
       }
 
-      return trades;
-    } catch (error) {
-      console.error('Error getting real trades:', error);
-      return [];
-    }
-  }
+      // 2. Проверяем баланс токена
+      const tokenContract = new ethers.Contract(tokenAddress, [
+        "function balanceOf(address owner) view returns (uint256)",
+        "function approve(address spender, uint256 amount) returns (bool)"
+      ], this.signer);
 
-  /**
-   * @dev Получить адрес токена
-   */
-  private getTokenAddress(symbol: string): string {
-    switch (symbol.toUpperCase()) {
-      case 'USDT': return CONTRACT_ADDRESSES.USDT_TOKEN;
-      case 'BTC': return CONTRACT_ADDRESSES.BTC_TOKEN;
-      case 'ETH': return CONTRACT_ADDRESSES.ETH_TOKEN;
-      default: throw new Error(`Unknown token: ${symbol}`);
-    }
-  }
+      const userAddress = await this.signer.getAddress();
+      const tokenBalance = await tokenContract.balanceOf(userAddress);
+      const amountIn = ethers.utils.parseUnits(tokenAmount, 18); // Предполагаем 18 decimals
 
-  /**
-   * @dev Получить decimals токена
-   */
-  private getTokenDecimals(symbol: string): number {
-    switch (symbol.toUpperCase()) {
-      case 'USDT': return 6;
-      case 'BTC': return 8;
-      case 'ETH': return 18;
-      default: return 18;
-    }
-  }
-
-  /**
-   * @dev Автоматически заминтить 1,000,000 USDT для владельца
-   */
-  async autoMintMillionUSDT() {
-    try {
-      const ownerPrivateKey = process.env.PRIVATE_KEY;
-      if (!ownerPrivateKey) {
-        console.log('⚠️ PRIVATE_KEY not found, skipping auto-mint');
-        return;
+      if (tokenBalance.lt(amountIn)) {
+        return { success: false, error: `Недостаточно ${tokenSymbol}` };
       }
 
-      const ownerWallet = new ethers.Wallet(ownerPrivateKey, this.provider);
-      const ownerUsdtContract = new ethers.Contract(
-        CONTRACT_ADDRESSES.USDT_TOKEN,
-        [
-          "function mint(address to, uint256 amount) public onlyOwner",
-          "function balanceOf(address account) view returns (uint256)"
-        ],
-        ownerWallet
+      // 3. Получаем ожидаемое количество USDT
+      const amountOut = await this.dexContract.getAmountOut(tokenAddress, usdtAddress, amountIn);
+      const minAmountOut = amountOut.mul(95).div(100); // 5% slippage
+
+      // 4. Одобряем трату токена
+      const approveTx = await tokenContract.approve(this.DEX_ADDRESS, amountIn);
+      await approveTx.wait();
+
+      // 5. Выполняем свап
+      const swapTx = await this.dexContract.swap(
+        tokenAddress,
+        usdtAddress,
+        amountIn, 
+        minAmountOut,
+        { gasLimit: 300000 }
       );
 
-      // Проверяем баланс владельца
-      const ownerBalance = await ownerUsdtContract.balanceOf(await ownerWallet.getAddress());
-      const amount = ethers.utils.parseUnits('1000000', 6); // 1,000,000 USDT
+      const receipt = await swapTx.wait();
       
-      if (ownerBalance.gte(amount)) {
-        console.log('✅ Owner already has sufficient USDT balance');
-        return;
-      }
+      console.log(`✅ Продажа успешна! TX: ${swapTx.hash}`);
+      
+      return {
+        success: true,
+        txHash: swapTx.hash,
+        gasUsed: receipt.gasUsed.toString()
+      };
 
-      console.log('🚀 Auto-minting 1,000,000 USDT for owner...');
-      const tx = await ownerUsdtContract.mint(await ownerWallet.getAddress(), amount);
-      await tx.wait();
-      console.log('✅ 1,000,000 USDT auto-minted for owner');
-      
-    } catch (error) {
-      console.error('❌ Error in auto-mint:', error);
-      // Не выбрасываем ошибку, чтобы не блокировать инициализацию
+    } catch (error: any) {
+      console.error('❌ Ошибка продажи:', error);
+      return {
+        success: false,
+        error: error.message || 'Неизвестная ошибка'
+      };
     }
   }
 
-  /**
-   * @dev Выдать начальный USDT пользователю
-   */
-  async grantInitialUSDT(userAddress: string) {
-    if (!this.usdtToken || !this.signer) {
-      throw new Error('Service not initialized');
-    }
-
+  // Получить адрес токена
+  private async getTokenAddress(symbol: string): Promise<string | null> {
+    if (!this.tokenRegistry) return null;
+    
     try {
-      // Проверяем, есть ли уже баланс
-      const balance = await this.usdtToken.balanceOf(userAddress);
-      if (balance.gt(0)) {
-        console.log('✅ User already has USDT balance');
-        return;
-      }
-
-      // Создаем новый контракт от имени владельца (используем приватный ключ)
-      const ownerPrivateKey = process.env.PRIVATE_KEY;
-      if (!ownerPrivateKey) {
-        throw new Error('PRIVATE_KEY not found in environment');
-      }
-
-      const ownerWallet = new ethers.Wallet(ownerPrivateKey, this.provider);
-      const ownerUsdtContract = new ethers.Contract(
-        CONTRACT_ADDRESSES.USDT_TOKEN,
-        [
-          "function transfer(address to, uint256 amount) returns (bool)",
-          "function balanceOf(address account) view returns (uint256)",
-          "function decimals() view returns (uint8)"
-        ],
-        ownerWallet
-      );
-
-      // Проверяем баланс владельца
-      const ownerBalance = await ownerUsdtContract.balanceOf(await ownerWallet.getAddress());
-      const amount = ethers.utils.parseUnits('10000', 6); // 10,000 USDT с 6 decimals
-      
-      if (ownerBalance.lt(amount)) {
-        throw new Error(`Owner has insufficient USDT balance. Has: ${ethers.utils.formatUnits(ownerBalance, 6)}, Needs: ${ethers.utils.formatUnits(amount, 6)}`);
-      }
-
-      console.log(`🚀 Transferring 10,000 USDT from owner to ${userAddress}...`);
-      
-      const tx = await ownerUsdtContract.transfer(userAddress, amount);
-      console.log(`⏳ Transaction hash: ${tx.hash}`);
-      
-      await tx.wait();
-      console.log('✅ 10,000 USDT successfully transferred to user:', userAddress);
-      
+      return await this.tokenRegistry.getTokenAddress(symbol);
     } catch (error) {
-      console.error('❌ Error granting initial USDT:', error);
-      throw error;
+      console.error(`Ошибка получения адреса токена ${symbol}:`, error);
+      return null;
     }
   }
 
-  /**
-   * @dev Получить общую стоимость портфолио
-   */
-  async getTotalPortfolioValue(userAddress: string): Promise<number> {
+  // Получить баланс токена
+  async getTokenBalance(tokenAddress: string, userAddress: string): Promise<string> {
     try {
-      const balances = await this.getRealBalances(userAddress);
-      return balances.reduce((total, token) => total + token.valueUSD, 0);
+      const tokenContract = new ethers.Contract(tokenAddress, [
+        "function balanceOf(address owner) view returns (uint256)",
+        "function decimals() view returns (uint8)"
+      ], this.provider);
+
+      const balance = await tokenContract.balanceOf(userAddress);
+      const decimals = await tokenContract.decimals();
+      
+      return ethers.utils.formatUnits(balance, decimals);
     } catch (error) {
-      console.error('Error getting total portfolio value:', error);
-      return 0;
+      console.error('Ошибка получения баланса:', error);
+      return '0';
+    }
+  }
+
+  // Получить цену токена
+  async getTokenPrice(tokenSymbol: string, usdtAmount: string): Promise<string> {
+    if (!this.dexContract) return '0';
+    
+    try {
+      const tokenAddress = await this.getTokenAddress(tokenSymbol);
+      const usdtAddress = await this.getTokenAddress('USDT');
+      
+      if (!tokenAddress || !usdtAddress) return '0';
+      
+      const amountIn = ethers.utils.parseUnits(usdtAmount, 6);
+      const amountOut = await this.dexContract.getAmountOut(usdtAddress, tokenAddress, amountIn);
+      
+      return ethers.utils.formatUnits(amountOut, 18);
+    } catch (error) {
+      console.error('Ошибка получения цены:', error);
+      return '0';
     }
   }
 }

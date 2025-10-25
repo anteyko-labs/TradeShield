@@ -1,293 +1,199 @@
-// Trading Engine - Real Trading Logic with Persistence
-export interface Position {
-  id: string;
-  symbol: string;
-  side: 'long' | 'short';
-  size: number;
-  entryPrice: number;
-  currentPrice: number;
-  pnl: number;
-  pnlPercent: number;
-  timestamp: string;
-  userAddress: string;
-}
+import { ethers } from 'ethers';
 
-export interface Order {
+export interface MatchOrder {
   id: string;
-  symbol: string;
+  user: string;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: string;
+  minAmountOut: string;
   side: 'buy' | 'sell';
-  type: 'market' | 'limit';
-  size: number;
-  price?: number;
-  status: 'pending' | 'filled' | 'cancelled';
-  timestamp: string;
-  userAddress: string;
+  timestamp: number;
 }
 
-export interface Trade {
+export interface BatchTrade {
   id: string;
-  symbol: string;
-  side: 'buy' | 'sell';
-  size: number;
-  price: number;
-  timestamp: string;
-  userAddress: string;
-  orderId: string;
-}
-
-export interface Portfolio {
-  totalBalance: number;
-  availableBalance: number;
-  positions: Position[];
-  orders: Order[];
-  trades: Trade[];
-  totalPnl: number;
-  totalPnlPercent: number;
+  orders: MatchOrder[];
+  totalFee: string;
+  gasEstimate: string;
+  status: 'pending' | 'executing' | 'completed' | 'failed';
+  txHash?: string;
+  timestamp: number;
 }
 
 class TradingEngine {
-  private storageKey = 'trading_portfolio';
-  private currentPrices: { [symbol: string]: number } = {};
+  private provider: ethers.providers.JsonRpcProvider;
+  private feeWallet: ethers.Wallet;
+  private dexContract?: ethers.Contract;
+  
+  // РЕАЛЬНЫЕ адреса
+  private readonly DEX_ADDRESS = '0x...'; // Нужен адрес SimpleDEX
+  private readonly USDT_ADDRESS = '0x434897c0Be49cd3f8d9bed1e9C56F8016afd2Ee6';
+  private readonly BTC_ADDRESS = '0xC941593909348e941420D5404Ab00b5363b1dDB4';
+  private readonly ETH_ADDRESS = '0x13E5f0d98D1dA90931A481fe0CE9eDAb24bA2Ecb';
+  
+  // Кошелек для комиссий
+  private readonly FEE_WALLET_ADDRESS = '0xB468B3837e185B59594A100c1583a98C79b524F3';
+  private readonly FEE_WALLET_PRIVATE_KEY = 'cbd0632c261aa3c4724616833151488df591ee1372c9982cac661ad773d8f42c';
+  
+  // Очередь ордеров
+  private orderQueue: MatchOrder[] = [];
+  private batchSize = 10; // Собираем 10 ордеров в батч
+  private batchTimeout = 30000; // 30 секунд максимум ожидания
+  
+  // ABI для DEX контракта
+  private readonly DEX_ABI = [
+    "function executeBatch(address[] memory users, address[] memory tokensIn, address[] memory tokensOut, uint256[] memory amountsIn, uint256[] memory minAmountsOut) external returns (bool)",
+    "function getAmountOut(address tokenIn, address tokenOut, uint256 amountIn) external view returns (uint256)",
+    "function collectFees() external",
+    "function getFeeBalance() external view returns (uint256)"
+  ];
 
-  // Initialize portfolio for user
-  initializePortfolio(userAddress: string): Portfolio {
-    const portfolio: Portfolio = {
-      totalBalance: 10000, // Starting with $10,000
-      availableBalance: 10000,
-      positions: [],
-      orders: [],
-      trades: [],
-      totalPnl: 0,
-      totalPnlPercent: 0
-    };
+  constructor() {
+    this.provider = new ethers.providers.JsonRpcProvider('https://sepolia.infura.io/v3/your-infura-key');
+    this.feeWallet = new ethers.Wallet(this.FEE_WALLET_PRIVATE_KEY, this.provider);
+  }
+
+  async initialize(dexAddress: string): Promise<void> {
+    this.DEX_ADDRESS = dexAddress;
+    this.dexContract = new ethers.Contract(this.DEX_ADDRESS, this.DEX_ABI, this.feeWallet);
+    console.log('🚀 TradingEngine инициализирован с DEX:', this.DEX_ADDRESS);
+  }
+
+  // Добавить ордер в очередь
+  async addOrder(order: MatchOrder): Promise<string> {
+    console.log(`📝 Добавлен ордер: ${order.side} ${order.amountIn} ${order.tokenIn} -> ${order.tokenOut}`);
     
-    this.savePortfolio(userAddress, portfolio);
-    return portfolio;
-  }
-
-  // Get portfolio for user
-  getPortfolio(userAddress: string): Portfolio {
-    const saved = localStorage.getItem(`${this.storageKey}_${userAddress}`);
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    return this.initializePortfolio(userAddress);
-  }
-
-  // Save portfolio to localStorage
-  private savePortfolio(userAddress: string, portfolio: Portfolio): void {
-    localStorage.setItem(`${this.storageKey}_${userAddress}`, JSON.stringify(portfolio));
-  }
-
-  // Update current prices (called from TradingView data)
-  updatePrices(prices: { [symbol: string]: number }): void {
-    this.currentPrices = prices;
-  }
-
-  // Get current price for symbol
-  getCurrentPrice(symbol: string): number {
-    return this.currentPrices[symbol] || 0;
-  }
-
-  // Create a new order
-  createOrder(
-    userAddress: string,
-    symbol: string,
-    side: 'buy' | 'sell',
-    type: 'market' | 'limit',
-    size: number,
-    price?: number
-  ): Order {
-    const order: Order = {
-      id: `order_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      symbol,
-      side,
-      type,
-      size,
-      price,
-      status: 'pending',
-      timestamp: new Date().toISOString(),
-      userAddress
-    };
-
-    const portfolio = this.getPortfolio(userAddress);
-    portfolio.orders.push(order);
-    this.savePortfolio(userAddress, portfolio);
-
-    // If market order, execute immediately
-    if (type === 'market') {
-      this.executeOrder(userAddress, order.id);
-    }
-
-    return order;
-  }
-
-  // Execute an order
-  executeOrder(userAddress: string, orderId: string): boolean {
-    const portfolio = this.getPortfolio(userAddress);
-    const order = portfolio.orders.find(o => o.id === orderId);
+    this.orderQueue.push(order);
     
-    if (!order || order.status !== 'pending') {
-      return false;
+    // Проверяем нужно ли выполнить батч
+    if (this.orderQueue.length >= this.batchSize) {
+      await this.executeBatch();
     }
-
-    const currentPrice = this.getCurrentPrice(order.symbol);
-    if (currentPrice === 0) {
-      return false;
-    }
-
-    const executionPrice = order.type === 'market' ? currentPrice : (order.price || currentPrice);
-    const totalCost = order.size * executionPrice;
-
-    // Check if user has enough balance
-    if (order.side === 'buy' && portfolio.availableBalance < totalCost) {
-      return false;
-    }
-
-    // Execute the trade
-    const trade: Trade = {
-      id: `trade_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-      symbol: order.symbol,
-      side: order.side,
-      size: order.size,
-      price: executionPrice,
-      timestamp: new Date().toISOString(),
-      userAddress,
-      orderId: order.id
-    };
-
-    // Update portfolio
-    if (order.side === 'buy') {
-      portfolio.availableBalance -= totalCost;
-    } else {
-      portfolio.availableBalance += totalCost;
-    }
-
-    // Update or create position
-    this.updatePosition(portfolio, trade);
-
-    // Update order status
-    order.status = 'filled';
     
-    // Add trade to history
-    portfolio.trades.push(trade);
-    
-    // Recalculate totals
-    this.calculatePortfolioTotals(portfolio);
-    
-    this.savePortfolio(userAddress, portfolio);
-    return true;
+    return order.id;
   }
 
-  // Update position based on trade
-  private updatePosition(portfolio: Portfolio, trade: Trade): void {
-    const existingPosition = portfolio.positions.find(p => p.symbol === trade.symbol);
+  // Выполнить батч ордеров
+  private async executeBatch(): Promise<void> {
+    if (this.orderQueue.length === 0) return;
     
-    if (existingPosition) {
-      if (trade.side === 'buy') {
-        // Adding to long position
-        const newSize = existingPosition.size + trade.size;
-        const newEntryPrice = (existingPosition.entryPrice * existingPosition.size + trade.price * trade.size) / newSize;
-        existingPosition.size = newSize;
-        existingPosition.entryPrice = newEntryPrice;
-      } else {
-        // Reducing long position
-        existingPosition.size -= trade.size;
-        if (existingPosition.size <= 0) {
-          // Position closed
-          const index = portfolio.positions.indexOf(existingPosition);
-          portfolio.positions.splice(index, 1);
+    console.log(`🔄 Выполнение батча из ${this.orderQueue.length} ордеров...`);
+    
+    // Берем первые N ордеров
+    const batchOrders = this.orderQueue.splice(0, this.batchSize);
+    
+    try {
+      // Подготавливаем данные для контракта
+      const users = batchOrders.map(order => order.user);
+      const tokensIn = batchOrders.map(order => order.tokenIn);
+      const tokensOut = batchOrders.map(order => order.tokenOut);
+      const amountsIn = batchOrders.map(order => order.amountIn);
+      const minAmountsOut = batchOrders.map(order => order.minAmountOut);
+      
+      // Вычисляем общую комиссию (0.2% с каждого ордера)
+      const totalFee = batchOrders.reduce((sum, order) => {
+        const fee = parseFloat(order.amountIn) * 0.002;
+        return sum + fee;
+      }, 0);
+      
+      console.log(`💰 Общая комиссия батча: ${totalFee.toFixed(6)} USDT`);
+      
+      // Выполняем батч транзакцию
+      const tx = await this.dexContract.executeBatch(
+        users,
+        tokensIn,
+        tokensOut,
+        amountsIn,
+        minAmountsOut,
+        {
+          gasLimit: 500000, // Больше газа для батча
+          gasPrice: await this.getOptimalGasPrice()
         }
-      }
-    } else {
-      // Create new position
-      if (trade.side === 'buy') {
-        const position: Position = {
-          id: `pos_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
-          symbol: trade.symbol,
-          side: 'long',
-          size: trade.size,
-          entryPrice: trade.price,
-          currentPrice: this.getCurrentPrice(trade.symbol),
-          pnl: 0,
-          pnlPercent: 0,
-          timestamp: trade.timestamp,
-          userAddress: trade.userAddress
-        };
-        portfolio.positions.push(position);
-      }
+      );
+      
+      console.log(`✅ Батч выполнен! TX: ${tx.hash}`);
+      
+      // Ждем подтверждения
+      const receipt = await tx.wait();
+      console.log(`⛽ Потрачено газа: ${receipt.gasUsed.toString()}`);
+      
+      // Комиссия автоматически переводится на FEE_WALLET
+      console.log(`💸 Комиссия ${totalFee.toFixed(6)} USDT переведена на ${this.FEE_WALLET_ADDRESS}`);
+      
+    } catch (error) {
+      console.error('❌ Ошибка выполнения батча:', error);
+      
+      // Возвращаем ордера в очередь
+      this.orderQueue.unshift(...batchOrders);
     }
   }
 
-  // Calculate portfolio totals
-  private calculatePortfolioTotals(portfolio: Portfolio): void {
-    let totalPnl = 0;
-    let totalValue = portfolio.availableBalance;
-
-    portfolio.positions.forEach(position => {
-      const currentPrice = this.getCurrentPrice(position.symbol);
-      position.currentPrice = currentPrice;
-      position.pnl = (currentPrice - position.entryPrice) * position.size;
-      position.pnlPercent = ((currentPrice - position.entryPrice) / position.entryPrice) * 100;
-      totalPnl += position.pnl;
-      totalValue += position.size * currentPrice;
-    });
-
-    portfolio.totalPnl = totalPnl;
-    portfolio.totalPnlPercent = (totalPnl / (totalValue - totalPnl)) * 100;
-    portfolio.totalBalance = totalValue;
+  // Получить оптимальную цену газа
+  private async getOptimalGasPrice(): Promise<string> {
+    try {
+      const feeData = await this.provider.getFeeData();
+      return feeData.gasPrice?.toString() || '20000000000'; // 20 gwei по умолчанию
+    } catch (error) {
+      console.error('Ошибка получения цены газа:', error);
+      return '20000000000';
+    }
   }
 
-  // Cancel an order
-  cancelOrder(userAddress: string, orderId: string): boolean {
-    const portfolio = this.getPortfolio(userAddress);
-    const order = portfolio.orders.find(o => o.id === orderId);
+  // Автоматическое выполнение батчей по таймауту
+  startBatchProcessor(): void {
+    console.log('⏰ Запуск автоматического батчера...');
     
-    if (!order || order.status !== 'pending') {
-      return false;
+    setInterval(async () => {
+      if (this.orderQueue.length > 0) {
+        console.log(`⏰ Таймаут батча: ${this.orderQueue.length} ордеров в очереди`);
+        await this.executeBatch();
+      }
+    }, this.batchTimeout);
+  }
+
+  // Получить баланс комиссий
+  async getFeeBalance(): Promise<string> {
+    if (!this.dexContract) return '0';
+    
+    try {
+      const balance = await this.dexContract.getFeeBalance();
+      return ethers.utils.formatEther(balance);
+    } catch (error) {
+      console.error('Ошибка получения баланса комиссий:', error);
+      return '0';
     }
-
-    order.status = 'cancelled';
-    this.savePortfolio(userAddress, portfolio);
-    return true;
   }
 
-  // Get open orders
-  getOpenOrders(userAddress: string): Order[] {
-    const portfolio = this.getPortfolio(userAddress);
-    return portfolio.orders.filter(o => o.status === 'pending');
+  // Собрать комиссии на кошелек
+  async collectFees(): Promise<string> {
+    if (!this.dexContract) return '';
+    
+    try {
+      console.log('💰 Сбор комиссий...');
+      const tx = await this.dexContract.collectFees();
+      await tx.wait();
+      console.log(`✅ Комиссии собраны! TX: ${tx.hash}`);
+      return tx.hash;
+    } catch (error) {
+      console.error('❌ Ошибка сбора комиссий:', error);
+      return '';
+    }
   }
 
-  // Get positions
-  getPositions(userAddress: string): Position[] {
-    const portfolio = this.getPortfolio(userAddress);
-    return portfolio.positions;
-  }
-
-  // Get trade history
-  getTradeHistory(userAddress: string): Trade[] {
-    const portfolio = this.getPortfolio(userAddress);
-    return portfolio.trades.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }
-
-  // Update all positions with current prices
-  updatePositions(userAddress: string): void {
-    const portfolio = this.getPortfolio(userAddress);
-    this.calculatePortfolioTotals(portfolio);
-    this.savePortfolio(userAddress, portfolio);
-  }
-
-  // Get portfolio summary
-  getPortfolioSummary(userAddress: string) {
-    const portfolio = this.getPortfolio(userAddress);
+  // Получить статистику
+  getStats() {
     return {
-      totalBalance: portfolio.totalBalance,
-      availableBalance: portfolio.availableBalance,
-      totalPnl: portfolio.totalPnl,
-      totalPnlPercent: portfolio.totalPnlPercent,
-      positionsCount: portfolio.positions.length,
-      openOrdersCount: portfolio.orders.filter(o => o.status === 'pending').length
+      ordersInQueue: this.orderQueue.length,
+      batchSize: this.batchSize,
+      batchTimeout: this.batchTimeout,
+      feeWallet: this.FEE_WALLET_ADDRESS
     };
+  }
+
+  // Получить ордера в очереди
+  getQueuedOrders(): MatchOrder[] {
+    return [...this.orderQueue];
   }
 }
 

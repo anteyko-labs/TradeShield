@@ -1,0 +1,16 @@
+{
+  "bots": [],
+  "trades": [],
+  "orders": {
+    "bids": [],
+    "asks": []
+  },
+  "systemStats": {
+    "totalBots": 0,
+    "activeOrders": 0,
+    "totalFees": 0,
+    "lastUpdate": null
+  },
+  "botBalances": {},
+  "tradeLogs": []
+}
